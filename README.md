@@ -6,10 +6,15 @@ NetAcht is a tiny PICO-8 demake of NetHack. It compresses some of NetHack's core
 
 ## Play
 
+Play NetAcht in your browser:
+
+https://pminervini.github.io/netacht/
+
 The cartridge is available as:
 
 - `src/netacht.p8.png` - PICO-8 cartridge image, suitable for SPLORE/BBS upload
 - `src/netacht.p8` - readable PICO-8 source cart
+- `docs/index.html` - browser-playable PICO-8 web export
 
 Open either file with PICO-8, or upload `src/netacht.p8.png` to a PICO-8 BBS post.
 
