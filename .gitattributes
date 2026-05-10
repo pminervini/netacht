@@ -1,0 +1,3 @@
+*.p8 linguist-language=Lua
+*.p8.png binary
+*.png binary
