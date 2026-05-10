@@ -37,6 +37,9 @@ weps={
 arms={["shirt"]=0,["robe"]=1,["cloak"]=1,["leather"]=2,["chain mail"]=4,["mithril"]=5}
 ptn={"ruby","smoky","milky","bubbly","ochre"}
 scr={"zelgo","kirje","praty","velo","tharr"}
+pn={"healing","speed","strength","sickness","confusion"}
+sn={"identify","teleport","enchant","mapping","fear"}
+wn={"bolt","fire","digging","polymorph"}
 msgs={}
 best=0
 
@@ -62,12 +65,24 @@ function rr(a,b) return flr(rnd(b-a+1))+a end
 function one(t) return t[rr(1,#t)] end
 function sgn(v) if v<0 then return -1 elseif v>0 then return 1 end return 0 end
 function dist(a,b,c,d) return abs(a-c)+abs(b-d) end
+function adj(a,b,c,d) return max(abs(a-c),abs(b-d))==1 end
+function clear_diag(a,b,c,d) return a==c or b==d or (pass(a,d) and pass(c,b)) end
 function ix(x,y) return x+y*mw end
 function inb(x,y) return x>=0 and y>=0 and x<mw and y<mh end
 function gt(x,y) if not inb(x,y) then return 0 end return map[ix(x,y)] or 0 end
 function st(x,y,v) if inb(x,y) then map[ix(x,y)]=v end end
 function pass(x,y) local v=gt(x,y) return v==1 or v==3 or v==4 or v>=5 end
 function block(x,y) local v=gt(x,y) return v==0 or v==2 end
+function wname() return pl.w and pl.w.n or "hands" end
+function calc_ac() pl.ac=pl.baseac+(pl.a and max(0,(pl.a.ac or 0)-(pl.a.r or 0)) or 0) end
+
+function iname(it)
+ if it.k=="potion" then return knp[it.id] and "potion of "..pn[it.id] or it.n end
+ if it.k=="scroll" then return kns[it.id] and "scroll of "..sn[it.id] or it.n end
+ if it.k=="wand" then return knw[it.id] and "wand of "..wn[it.id] or it.n end
+ if it.k=="armor" and (it.r or 0)>0 then return "rusty "..it.n end
+ return it.n
+end
 
 function path_add(qx,qy,x,y,d)
  local k=ix(x,y)
@@ -102,6 +117,24 @@ function place_item(k,x,y)
  add(items,new_item(k,x,y))
 end
 
+function save_level()
+ levels[depth]={map=map,seen=seen,vis=vis,traps=traps,items=items,mons=mons,
+  rooms=rooms,upx=upx,upy=upy,downx=downx,downy=downy}
+end
+
+function load_level(d,dir)
+ save_level()
+ local l=levels[d]
+ if l then
+  depth=d map=l.map seen=l.seen vis=l.vis traps=l.traps items=l.items mons=l.mons
+  rooms=l.rooms upx=l.upx upy=l.upy downx=l.downx downy=l.downy
+  if dir>0 then pl.x=upx pl.y=upy else pl.x=downx pl.y=downy end
+  upd_vis() msg("return to level "..d,11)
+ else
+  gen_level(d,dir)
+ end
+end
+
 function loot_kind()
  local r=rnd()
  if r<.24 then return "gold" end
@@ -114,11 +147,11 @@ function loot_kind()
  return depth>3 and "wand" or "gold"
 end
 
-function freepos()
+function freepos(far)
  for z=1,400 do
   local r=one(rooms)
   local x=rr(r.x,r.x+r.w-1) local y=rr(r.y,r.y+r.h-1)
-  if pass(x,y) and not mon_at(x,y) and not (pl and pl.x==x and pl.y==y) then return x,y end
+  if pass(x,y) and not mon_at(x,y) and not (pl and pl.x==x and pl.y==y) and (not far or (vis[ix(x,y)]~=1 and dist(pl.x,pl.y,x,y)>8)) then return x,y end
  end
  return rooms[1].x+1,rooms[1].y+1
 end
@@ -165,7 +198,7 @@ function walls()
  end
 end
 
-function gen_level(d)
+function gen_level(d,dir)
  depth=d map={} seen={} vis={} traps={} items={} mons={} rooms={}
  for i=0,mw*mh-1 do map[i]=0 seen[i]=0 vis[i]=0 end
  for a=1,80 do
@@ -177,7 +210,7 @@ function gen_level(d)
    if #rooms>=rr(11,16) then break end
   end
  end
- if #rooms<2 then gen_level(d) return end
+ if #rooms<2 then gen_level(d,dir) return end
  for i=2,#rooms do
   local a=rooms[i-1] local b=rooms[i]
   carve_corr(a.x+a.w\2,a.y+a.h\2,b.x+b.w\2,b.y+b.h\2)
@@ -193,8 +226,9 @@ function gen_level(d)
    if r.t=="trap" then for n=1,rr(3,6) do add_trap() end end
   end
  end
- local a=rooms[1] pl.x=a.x+a.w\2 pl.y=a.y+a.h\2 st(pl.x,pl.y,5)
+ local a=rooms[1] upx=a.x+a.w\2 upy=a.y+a.h\2 st(upx,upy,5)
  local b=rooms[#rooms] downx=b.x+b.w\2 downy=b.y+b.h\2 st(downx,downy,6)
+ if dir and dir<0 then pl.x=downx pl.y=downy else pl.x=upx pl.y=upy end
  if d==12 and not pl.hasamu then place_item("amulet",downx,downy) end
  for i=1,4+d\2 do place_item(loot_kind()) end
  for i=1,5+d*2 do add_mon() end
@@ -209,24 +243,28 @@ function add_trap()
  traps[ix(x,y)]={x=x,y=y,t=one({"pit","arrow","sleep","teleport","poly","rust"}),seen=false}
 end
 
-function add_mon()
- local x,y=freepos()
+function add_mon(x,y,awake)
+ if not x then x,y=freepos() end
  local maxm=mid(1,depth+3,#mtdefs)
  local d=mtdefs[rr(1,maxm)]
- add(mons,{n=d.n,ch=d.ch,c=d.c,x=x,y=y,h=d.h+depth,a=d.a+depth\2,xp=d.xp,s=d.s,awake=rnd()<depth/28})
+ add(mons,{n=d.n,ch=d.ch,c=d.c,x=x,y=y,h=d.h+depth,a=d.a+depth\2,xp=d.xp,s=d.s,awake=awake or rnd()<depth/28})
 end
 
 function make_player()
  local r=roles[rp]
+ levels={} knp={} kns={} knw={}
+ local wi={k="weapon",n=r.w,d=weps[r.w].d}
+ local ai={k="armor",n=r.a,ac=arms[r.a]}
  pl={x=1,y=1,role=r.n,maxhp=r.hp,hp=r.hp,str=r.str,dex=r.dex,con=r.con,
-     ac=r.ac,baseac=r.ac,xp=0,lev=1,g=r.g,hunger=r.food,inv={},w=r.w,a=r.a,
+     ac=r.ac,baseac=r.ac-(ai.ac or 0),xp=0,lev=1,g=r.g,hunger=r.food,inv={},w=wi,a=ai,
      prayer=0,stun=0,hasamu=false}
- add(pl.inv,{k="weapon",n=r.w,d=weps[r.w].d})
- add(pl.inv,{k="armor",n=r.a,ac=arms[r.a]})
+ add(pl.inv,wi)
+ add(pl.inv,ai)
+ calc_ac()
  add(pl.inv,new_item("food"))
  if r.wand then add(pl.inv,new_item("wand")) end
  if r.pot then for i=1,r.pot do add(pl.inv,new_item("potion")) end end
- turn=0 gen_level(1) mode="play"
+ turn=0 gen_level(1,1) mode="play"
  msg("you are a "..r.n,10)
 end
 
@@ -307,6 +345,7 @@ function _update()
  if mode=="title" then up_title()
  elseif mode=="play" then up_play()
  elseif mode=="inv" then up_inv()
+ elseif mode=="aim" then up_aim()
  elseif mode=="help" then if btnp(4) or btnp(5) then mode=oldmode or "title" end
  elseif mode=="dead" or mode=="win" then if btnp(4) or btnp(5) then mode="title" end
  end
@@ -320,11 +359,22 @@ function up_title()
 end
 
 function up_play()
- local dx=0 local dy=0
- if btnp(0) then dx=-1 elseif btnp(1) then dx=1 elseif btnp(2) then dy=-1 elseif btnp(3) then dy=1 end
+ local dx,dy=dir_input()
  if dx~=0 or dy~=0 then try_move(dx,dy) return end
  if btnp(4) then act() return end
  if btnp(5) then sel=1 mode="inv" end
+end
+
+function dir_input()
+ if btnp(0) or btnp(1) or btnp(2) or btnp(3) then
+  local dx=0 local dy=0
+  if btn(0) then dx-=1 end
+  if btn(1) then dx+=1 end
+  if btn(2) then dy-=1 end
+  if btn(3) then dy+=1 end
+  return dx,dy
+ end
+ return 0,0
 end
 
 function spend()
@@ -332,14 +382,19 @@ function spend()
  if pl.stun>0 then pl.stun-=1 end
  pl.hunger-=1
  if pl.hunger<80 and turn%8==0 then hurt(rr(1,3),"starvation") end
+ if mode=="dead" then return end
+ if turn%45==0 and #mons<8+depth*3 and rnd()<.4 then
+  local x,y=freepos(true) add_mon(x,y,true) msg("you hear movement",5)
+ end
  move_mons()
  upd_vis()
  if pl.hp<pl.maxhp and turn%30==0 and pl.hunger>250 then pl.hp+=1 end
- if pl.xp>=pl.lev*12 then pl.lev+=1 pl.maxhp+=rr(3,6) pl.hp=pl.maxhp pl.str+=1 msg("you feel more experienced",11) end
+ if pl.lev<12 and pl.xp>=pl.lev*pl.lev*16 then pl.lev+=1 pl.maxhp+=rr(3,6) pl.hp=pl.maxhp pl.str+=1 msg("you feel more experienced",11) end
 end
 
 function try_move(dx,dy)
  if pl.stun>0 and rnd()<.35 then dx=rr(-1,1) dy=rr(-1,1) end
+ if not clear_diag(pl.x,pl.y,pl.x+dx,pl.y+dy) then return end
  local x=pl.x+dx local y=pl.y+dy
  local m=mon_at(x,y)
  if m then attack(m) spend() return end
@@ -355,10 +410,10 @@ function act()
  local v=gt(pl.x,pl.y)
  local its=item_at(pl.x,pl.y)
  if #its>0 then pickup(its) spend() return end
- if v==6 then gen_level(depth+1) spend() return end
+ if v==6 then load_level(depth+1,1) spend() return end
  if v==5 then
   if depth==1 and pl.hasamu then mode="win" dset(0,max(best,pl.g+pl.xp*10)) return end
-  gen_level(max(1,depth-1)) spend() return
+  load_level(max(1,depth-1),-1) spend() return
  end
  if v==7 then pray() spend() return end
  if v==8 then drink_fountain() spend() return end
@@ -369,7 +424,7 @@ function pickup(its)
  for it in all(its) do
   if it.k=="gold" then pl.g+=it.q msg("picked up "..it.q.." gold",10) del(items,it)
   elseif it.k=="amulet" then pl.hasamu=true msg("you have yendor!",10) msg("the dungeon wakes",8) del(items,it)
-  elseif #pl.inv<10 then add(pl.inv,it) msg("picked up "..it.n,7) del(items,it)
+  elseif #pl.inv<10 then add(pl.inv,it) msg("picked up "..iname(it),7) del(items,it)
   else msg("pack is full",8) end
  end
 end
@@ -390,13 +445,16 @@ function trigger_trap(tr)
  if tr.t=="sleep" then msg("sleep gas!",13) pl.stun=rr(3,7)+depth\4 end
  if tr.t=="teleport" then msg("you teleport",13) pl.x,pl.y=freepos() end
  if tr.t=="poly" then msg("you feel different",14) pl.str=mid(3,pl.str+rr(-2,3),12) end
- if tr.t=="rust" then msg("your armor rusts",4) pl.ac=max(0,pl.ac-1) end
+ if tr.t=="rust" then
+  if pl.a then pl.a.r=(pl.a.r or 0)+1 calc_ac() msg("your armor rusts",4)
+  else msg("rust flakes away",5) end
+ end
 end
 
 function attack(m)
  local hit=rr(1,20)+pl.dex+pl.lev
  if hit>9+depth+depth\4 then
-  local wd=weps[pl.w] and weps[pl.w].d or 3
+  local wd=pl.w and (pl.w.d or 3) or 3
   local dm=rr(1,wd)+pl.str\3
   if m.s==3 and rnd()<.3 then pl.stun=rr(2,5) msg("the eye freezes you",12) end
   m.h-=dm msg("you hit "..m.n.." "..dm,7)
@@ -412,7 +470,7 @@ function move_mons()
  for m in all(mons) do
   if m.h>0 then
    local dx=0 local dy=0
-   if dist(m.x,m.y,pl.x,pl.y)==1 then mon_hit(m)
+   if adj(m.x,m.y,pl.x,pl.y) and clear_diag(m.x,m.y,pl.x,pl.y) then mon_hit(m)
    else
     if m.awake or dist(m.x,m.y,pl.x,pl.y)<7 then
      local bx=m.x local by=m.y local bd=pd[ix(m.x,m.y)] or 99
@@ -433,7 +491,12 @@ function mon_hit(m)
  local hit=rr(1,20)+m.a+depth\5
  if hit>10+pl.ac+pl.dex\3 then
   local dm=max(1,rr(1,m.a+2+depth\4)-pl.ac\2)
-  if m.s==2 and #pl.inv>0 and rnd()<.18 then local it=pl.inv[#pl.inv] deli(pl.inv,#pl.inv) msg(m.n.." steals "..it.n,14) return end
+  if m.s==2 and #pl.inv>0 and rnd()<.18 then
+   local it=pl.inv[#pl.inv] deli(pl.inv,#pl.inv)
+   if it==pl.w then pl.w=nil end
+   if it==pl.a then pl.a=nil calc_ac() end
+   msg(m.n.." steals "..iname(it),14) return
+  end
   if m.s==4 and rnd()<.25 then pl.lev=max(1,pl.lev-1) msg("life drains away",13) end
   hurt(dm,m.n)
  else
@@ -480,7 +543,7 @@ function up_inv()
   return
  end
  if btnp(4) then
-  if sel<=#pl.inv then use_item(pl.inv[sel],sel)
+  if sel<=#pl.inv then use_item(pl.inv[sel],sel) if mode=="aim" then return end
   elseif sel==#pl.inv+1 then pray()
   else oldmode="inv" mode="help" return end
   mode="play" spend()
@@ -490,25 +553,26 @@ end
 function drop_item(i)
  local it=deli(pl.inv,i)
  if not it then return end
- if it.k=="weapon" and pl.w==it.n then pl.w="hands" end
- if it.k=="armor" and pl.a==it.n then pl.a="shirt" pl.ac=pl.baseac end
+ if it==pl.w then pl.w=nil end
+ if it==pl.a then pl.a=nil calc_ac() end
  it.x=pl.x it.y=pl.y
  add(items,it)
- msg("dropped "..it.n,5)
+ msg("dropped "..iname(it),5)
 end
 
 function use_item(it,i)
- if it.k=="weapon" then pl.w=it.n msg("wielding "..it.n,10) return end
- if it.k=="armor" then pl.a=it.n pl.ac=pl.baseac+(it.ac or 0) msg("wearing "..it.n,10) return end
- if it.k=="food" then pl.hunger+=it.q msg("you eat "..it.n,11) deli(pl.inv,i) return end
+ if it.k=="weapon" then pl.w=it msg("wielding "..iname(it),10) return end
+ if it.k=="armor" then pl.a=it calc_ac() msg("wearing "..iname(it),10) return end
+ if it.k=="food" then pl.hunger+=it.q msg("you eat "..iname(it),11) deli(pl.inv,i) return end
  if it.k=="potion" then quaff(it) deli(pl.inv,i) return end
  if it.k=="scroll" then read_scroll(it) deli(pl.inv,i) return end
- if it.k=="wand" then zap(it) it.z-=1 if it.z<=0 then msg("the wand crumbles",5) deli(pl.inv,i) end return end
+ if it.k=="wand" then aim_it=it mode="aim" msg("aim wand",13) return end
  if it.k=="gem" then pl.g+=50 msg("you appraise the gem",10) deli(pl.inv,i) return end
  msg("nothing happens",5)
 end
 
 function quaff(it)
+ knp[it.id]=true
  if it.id==1 then pl.hp=min(pl.maxhp,pl.hp+rr(8,18)) msg("you feel better",11)
  elseif it.id==2 then pl.dex+=1 msg("you feel quick",11)
  elseif it.id==3 then pl.str+=1 msg("you feel strong",11)
@@ -517,22 +581,47 @@ function quaff(it)
 end
 
 function read_scroll(it)
- if it.id==1 then msg("your pack is identified",11)
+ kns[it.id]=true
+ if it.id==1 then for p in all(pl.inv) do if p.k=="potion" then knp[p.id]=true elseif p.k=="scroll" then kns[p.id]=true elseif p.k=="wand" then knw[p.id]=true end end msg("your pack is identified",11)
  elseif it.id==2 then pl.x,pl.y=freepos() msg("you teleport",13)
- elseif it.id==3 then if pl.w and weps[pl.w] then weps[pl.w].d=min(11,weps[pl.w].d+1) end msg("your weapon glows",10)
+ elseif it.id==3 then if pl.w then pl.w.d=min(11,(pl.w.d or 3)+1) end msg("your weapon glows",10)
  elseif it.id==4 then for i=0,mw*mh-1 do seen[i]=1 end msg("the level is revealed",10)
  else for m in all(mons) do if dist(m.x,m.y,pl.x,pl.y)<6 then m.awake=false end end msg("monsters hesitate",12) end
 end
 
-function zap(it)
- local near=nil local bd=99
- for m in all(mons) do local d=dist(pl.x,pl.y,m.x,m.y) if d<bd and d<9 then near=m bd=d end end
- if not near then msg("the wand buzzes",5) return end
- if it.id==1 then near.h-=rr(8,18) msg("bolt strikes "..near.n,10)
- elseif it.id==2 then near.h-=rr(12,24) msg("fire burns "..near.n,9)
- elseif it.id==3 then st(near.x,near.y,4) msg("rock turns to dust",13)
- else local d=one(mtdefs) near.n=d.n near.ch=d.ch near.c=d.c near.h=d.h msg("it changes shape",14) end
- if near.h<=0 then msg(near.n.." dies",11) pl.xp+=near.xp del(mons,near) end
+function up_aim()
+ if btnp(5) then mode="play" msg("never mind",5) return end
+ local dx,dy=dir_input()
+ if dx~=0 or dy~=0 then
+  zap(aim_it,dx,dy)
+  aim_it.z-=1
+  if aim_it.z<=0 then msg("the wand crumbles",5) del(pl.inv,aim_it) end
+  mode="play" spend()
+ end
+end
+
+function zap(it,dx,dy)
+ knw[it.id]=true
+ local x=pl.x local y=pl.y
+ for i=1,12 do
+  x+=dx y+=dy
+  if not inb(x,y) then break end
+  if it.id==3 then
+   if block(x,y) then st(x,y,4) seen[ix(x,y)]=1 msg("rock turns to dust",13) return end
+  else
+   local m=mon_at(x,y)
+   if m then wand_hit(it,m) return end
+   if block(x,y) then break end
+  end
+ end
+ msg("the wand buzzes",5)
+end
+
+function wand_hit(it,m)
+ if it.id==1 then m.h-=rr(8,18) msg("bolt strikes "..m.n,10)
+ elseif it.id==2 then m.h-=rr(12,24) msg("fire burns "..m.n,9)
+ else local d=one(mtdefs) m.n=d.n m.ch=d.ch m.c=d.c m.h=d.h+depth m.a=d.a+depth\2 m.xp=d.xp msg("it changes shape",14) end
+ if m.h<=0 then msg(m.n.." dies",11) pl.xp+=m.xp del(mons,m) end
 end
 
 function _draw()
@@ -540,6 +629,7 @@ function _draw()
  if mode=="title" then draw_title()
  elseif mode=="play" then draw_game()
  elseif mode=="inv" then draw_game() draw_inv()
+ elseif mode=="aim" then draw_game()
  elseif mode=="help" then draw_help()
  elseif mode=="dead" then draw_end(false)
  elseif mode=="win" then draw_end(true) end
@@ -568,9 +658,9 @@ end
 
 function draw_game()
  rectfill(0,0,127,11,1)
- print("dl"..depth.." hp"..pl.hp.."/"..pl.maxhp.." ac"..pl.ac.." xp"..pl.xp.." $"..pl.g,1,1,7)
+ print("dl"..depth.." lv"..pl.lev.." hp"..pl.hp.."/"..pl.maxhp.." ac"..pl.ac.." $"..pl.g,1,1,7)
  local hs="satiated" if pl.hunger<500 then hs="hungry" end if pl.hunger<250 then hs="weak" end if pl.hunger<100 then hs="faint" end
- print(pl.role.." "..hs.." "..pl.w,1,7,6)
+ print(pl.role.." "..hs.." "..wname(),1,7,6)
  local cx=mid(0,pl.x-vw\2,mw-vw) local cy=mid(0,pl.y-vh\2,mh-vh)
  for sy=0,vh-1 do
   for sx=0,vw-1 do
@@ -607,9 +697,10 @@ function draw_inv()
  print("pack",52,23,10)
  local y=31
  for i=1,#pl.inv do
-  local eq=(it.k=="weapon" and pl.w==it.n) or (it.k=="armor" and pl.a==it.n)
+  local it=pl.inv[i]
+  local eq=it==pl.w or it==pl.a
   local mark=i==sel and ">" or " "
-  local s=mark..(eq and "*" or " ")..it.n
+  local s=mark..(eq and "*" or " ")..iname(it)
   if it.z then s=s.."["..it.z.."]" end
   local co=eq and 10 or 6
   if i==sel then co=eq and 14 or 11 end
@@ -623,16 +714,16 @@ end
 function draw_help()
  cls(0)
  print("netacht commands",31,10,10)
- print("arrows: move/attack",8,25,7)
- print("o: pickup stairs altar",8,34,7)
- print("o also searches/rests",8,43,6)
- print("x: inventory/actions",8,52,7)
- print("in pack: up/down,o use",8,61,6)
- print("left/right drops item",8,70,6)
- print("find yendor on dl12",8,82,10)
- print("return to dl1 to win",8,91,10)
- print("rooms, traps, shops,",8,106,5)
- print("hunger and gods vary",8,115,5)
+ print("arrows/chords: move",8,25,7)
+ print("bump to attack",8,34,7)
+ print("o: pickup stairs altar",8,43,7)
+ print("o also searches/rests",8,52,6)
+ print("x: inventory/actions",8,61,7)
+ print("wand asks direction",8,70,13)
+ print("left/right drops item",8,79,6)
+ print("find yendor on dl12",8,91,10)
+ print("return to dl1 to win",8,100,10)
+ print("hunger and gods vary",8,112,5)
  print("o/x back",48,121,7)
 end
 
