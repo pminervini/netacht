@@ -438,8 +438,8 @@ end
 function up_inv()
  if btnp(5) then mode="play" return end
  local n=#pl.inv+2
- if btnp(2) then sel=max(1,sel-1) end
- if btnp(3) then sel=min(n,sel+1) end
+ if btnp(2) then sel-=1 if sel<1 then sel=n end end
+ if btnp(3) then sel+=1 if sel>n then sel=1 end end
  if (btnp(0) or btnp(1)) and sel<=#pl.inv then
   drop_item(sel)
   sel=min(sel,#pl.inv+2)
@@ -577,7 +577,10 @@ function draw_inv()
   local it=pl.inv[i] local mark=i==sel and ">" or " "
   local s=mark..it.n
   if it.z then s=s.."["..it.z.."]" end
-  print(sub(s,1,25),16,y, i==sel and 11 or 6) y+=6
+  local eq=(it.k=="weapon" and pl.w==it.n) or (it.k=="armor" and pl.a==it.n)
+  local co=eq and 10 or 6
+  if i==sel then co=eq and 14 or 11 end
+  print(sub(s,1,25),16,y,co) y+=6
  end
  print((sel==#pl.inv+1 and ">" or " ").."pray",16,y,sel==#pl.inv+1 and 11 or 6) y+=6
  print((sel==#pl.inv+2 and ">" or " ").."help",16,y,sel==#pl.inv+2 and 11 or 6)
