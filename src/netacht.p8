@@ -72,7 +72,7 @@ function block(x,y) local v=gt(x,y) return v==0 or v==2 end
 function new_item(k,x,y)
  local it={k=k,x=x,y=y,bu=rr(-1,1)}
  if k=="gold" then it.n="gold" it.q=rr(5,25)*depth return it end
- if k=="food" then it.n=one({"ration","tripe","apple","corpse"}) it.q=rr(120,320) return it end
+ if k=="food" then it.n=one({"ration","tripe","apple","corpse"}) it.q=rr(80,220) return it end
  if k=="weapon" then it.n=one({"dagger","mace","axe","long sword"}) it.d=weps[it.n].d return it end
  if k=="armor" then it.n=one({"leather","chain mail","cloak","mithril"}) it.ac=arms[it.n] return it end
  if k=="potion" then it.id=rr(1,5) it.n=ptn[it.id].." potion" return it end
@@ -84,6 +84,18 @@ end
 function place_item(k,x,y)
  if not x then x,y=freepos() end
  add(items,new_item(k,x,y))
+end
+
+function loot_kind()
+ local r=rnd()
+ if r<.24 then return "gold" end
+ if r<.42 then return "gem" end
+ if r<.56 then return "food" end
+ if r<.68 then return "weapon" end
+ if r<.78 then return "armor" end
+ if r<.88 then return "potion" end
+ if r<.96 then return "scroll" end
+ return depth>3 and "wand" or "gold"
 end
 
 function freepos()
@@ -167,9 +179,10 @@ function gen_level(d)
  end
  local a=rooms[1] pl.x=a.x+a.w\2 pl.y=a.y+a.h\2 st(pl.x,pl.y,5)
  local b=rooms[#rooms] downx=b.x+b.w\2 downy=b.y+b.h\2 st(downx,downy,6)
- if d==12 then place_item("amulet",downx,downy) end
- for i=1,7+d do place_item(one({"gold","food","weapon","armor","potion","scroll","wand","gem"})) end
+ if d==12 and not pl.hasamu then place_item("amulet",downx,downy) end
+ for i=1,4+d\2 do place_item(loot_kind()) end
  for i=1,5+d*2 do add_mon() end
+ if pl.hasamu then for i=1,2+d\2 do add_mon() end msg("the dungeon wakes",8) end
  for i=1,3+d\2 do add_trap() end
  upd_vis()
  msg("welcome to level "..d,11)
@@ -184,7 +197,7 @@ function add_mon()
  local x,y=freepos()
  local maxm=mid(1,depth+3,#mtdefs)
  local d=mtdefs[rr(1,maxm)]
- add(mons,{n=d.n,ch=d.ch,c=d.c,x=x,y=y,h=d.h+depth,a=d.a+depth\3,xp=d.xp,s=d.s,awake=false})
+ add(mons,{n=d.n,ch=d.ch,c=d.c,x=x,y=y,h=d.h+depth,a=d.a+depth\2,xp=d.xp,s=d.s,awake=rnd()<depth/28})
 end
 
 function make_player()
@@ -230,7 +243,7 @@ function upd_vis()
   for x=pl.x-12,pl.x+12 do
    if inb(x,y) and dist(pl.x,pl.y,x,y)<=12 and los(pl.x,pl.y,x,y) then
     local k=ix(x,y) vis[k]=1 seen[k]=1
-    local tr=traps[k] if tr and rnd()<.07+pl.dex/80 then tr.seen=true end
+    local tr=traps[k] if tr and rnd()<.04+pl.dex/110 then tr.seen=true end
    end
   end
  end
@@ -252,8 +265,7 @@ end
 
 function tile_col(v,lit)
  if not lit then return 5 end
- if v==1 then return 6 end
- if v==9 then return 10 end
+ if v==1 or v==9 then return 5 end
  if v==2 then return 5 end
  if v==3 then return 9 end
  if v==4 then return 13 end
@@ -306,7 +318,7 @@ function spend()
  if pl.hunger<80 and turn%8==0 then hurt(rr(1,3),"starvation") end
  move_mons()
  upd_vis()
- if pl.hp<pl.maxhp and turn%18==0 and pl.hunger>120 then pl.hp+=1 end
+ if pl.hp<pl.maxhp and turn%30==0 and pl.hunger>250 then pl.hp+=1 end
  if pl.xp>=pl.lev*12 then pl.lev+=1 pl.maxhp+=rr(3,6) pl.hp=pl.maxhp pl.str+=1 msg("you feel more experienced",11) end
 end
 
@@ -318,7 +330,7 @@ function try_move(dx,dy)
  if pass(x,y) then
   pl.x=x pl.y=y
   local tr=traps[ix(x,y)]
-  if tr and not tr.done then trigger_trap(tr) end
+  if tr then trigger_trap(tr) end
   spend()
  end
 end
@@ -340,7 +352,7 @@ end
 function pickup(its)
  for it in all(its) do
   if it.k=="gold" then pl.g+=it.q msg("picked up "..it.q.." gold",10) del(items,it)
-  elseif it.k=="amulet" then pl.hasamu=true msg("you have yendor!",10) del(items,it)
+  elseif it.k=="amulet" then pl.hasamu=true msg("you have yendor!",10) msg("the dungeon wakes",8) del(items,it)
   elseif #pl.inv<10 then add(pl.inv,it) msg("picked up "..it.n,7) del(items,it)
   else msg("pack is full",8) end
  end
@@ -350,16 +362,16 @@ function search()
  local found=false
  for yy=-1,1 do for xx=-1,1 do
   local tr=traps[ix(pl.x+xx,pl.y+yy)]
-  if tr and not tr.seen and rnd()<.35+pl.dex/30 then tr.seen=true found=true end
+  if tr and not tr.seen and rnd()<.25+pl.dex/45 then tr.seen=true found=true end
  end end
  if found then msg("you find a trap",10) else msg("you search",5) end
 end
 
 function trigger_trap(tr)
- tr.seen=true tr.done=true
- if tr.t=="pit" then msg("you fall into a pit!",8) hurt(rr(2,7),"pit") end
- if tr.t=="arrow" then msg("an arrow shoots out!",8) hurt(rr(1,6),"arrow trap") end
- if tr.t=="sleep" then msg("sleep gas!",13) pl.stun=rr(3,7) end
+ tr.seen=true
+ if tr.t=="pit" then msg("you fall into a pit!",8) hurt(rr(2,7)+depth\3,"pit") end
+ if tr.t=="arrow" then msg("an arrow shoots out!",8) hurt(rr(1,6)+depth\4,"arrow trap") end
+ if tr.t=="sleep" then msg("sleep gas!",13) pl.stun=rr(3,7)+depth\4 end
  if tr.t=="teleport" then msg("you teleport",13) pl.x,pl.y=freepos() end
  if tr.t=="poly" then msg("you feel different",14) pl.str=mid(3,pl.str+rr(-2,3),12) end
  if tr.t=="rust" then msg("your armor rusts",4) pl.ac=max(0,pl.ac-1) end
@@ -367,14 +379,14 @@ end
 
 function attack(m)
  local hit=rr(1,20)+pl.dex+pl.lev
- if hit>8+depth then
+ if hit>9+depth+depth\4 then
   local wd=weps[pl.w] and weps[pl.w].d or 3
   local dm=rr(1,wd)+pl.str\3
   if m.s==3 and rnd()<.3 then pl.stun=rr(2,5) msg("the eye freezes you",12) end
   m.h-=dm msg("you hit "..m.n.." "..dm,7)
   if m.h<=0 then
    msg("you kill "..m.n,11) pl.xp+=m.xp del(mons,m)
-   if rnd()<.28 then place_item("food",m.x,m.y) end
+   if rnd()<.12 then place_item("food",m.x,m.y) end
   end
  else msg("you miss "..m.n,5) end
 end
@@ -397,9 +409,9 @@ function move_mons()
 end
 
 function mon_hit(m)
- local hit=rr(1,20)+m.a
+ local hit=rr(1,20)+m.a+depth\5
  if hit>10+pl.ac+pl.dex\3 then
-  local dm=max(1,rr(1,m.a+2)-pl.ac\2)
+  local dm=max(1,rr(1,m.a+2+depth\4)-pl.ac\2)
   if m.s==2 and #pl.inv>0 and rnd()<.18 then local it=pl.inv[#pl.inv] deli(pl.inv,#pl.inv) msg(m.n.." steals "..it.n,14) return end
   if m.s==4 and rnd()<.25 then pl.lev=max(1,pl.lev-1) msg("life drains away",13) end
   hurt(dm,m.n)
@@ -420,10 +432,10 @@ end
 
 function pray()
  if turn<pl.prayer then msg("the gods are silent",5) return end
- pl.prayer=turn+220
+ pl.prayer=turn+320
  if pl.hunger<250 then pl.hunger+=500 msg("manna fills you",11)
  elseif pl.hp<pl.maxhp then pl.hp=pl.maxhp msg("you are healed",11)
- else pl.str+=1 msg("you feel blessed",11) end
+ else msg("you feel watched",11) end
 end
 
 function drink_fountain()
@@ -479,14 +491,14 @@ function quaff(it)
  if it.id==1 then pl.hp=min(pl.maxhp,pl.hp+rr(8,18)) msg("you feel better",11)
  elseif it.id==2 then pl.dex+=1 msg("you feel quick",11)
  elseif it.id==3 then pl.str+=1 msg("you feel strong",11)
- elseif it.id==4 then hurt(rr(3,10),"sickness")
+ elseif it.id==4 then hurt(rr(3,10)+depth\4,"sickness")
  else pl.stun=rr(4,8) msg("you reel",13) end
 end
 
 function read_scroll(it)
  if it.id==1 then msg("your pack is identified",11)
  elseif it.id==2 then pl.x,pl.y=freepos() msg("you teleport",13)
- elseif it.id==3 then if pl.w and weps[pl.w] then weps[pl.w].d+=1 end msg("your weapon glows",10)
+ elseif it.id==3 then if pl.w and weps[pl.w] then weps[pl.w].d=min(11,weps[pl.w].d+1) end msg("your weapon glows",10)
  elseif it.id==4 then for i=0,mw*mh-1 do seen[i]=1 end msg("the level is revealed",10)
  else for m in all(mons) do if dist(m.x,m.y,pl.x,pl.y)<6 then m.awake=false end end msg("monsters hesitate",12) end
 end
@@ -574,10 +586,10 @@ function draw_inv()
  print("pack",52,23,10)
  local y=31
  for i=1,#pl.inv do
-  local it=pl.inv[i] local mark=i==sel and ">" or " "
-  local s=mark..it.n
-  if it.z then s=s.."["..it.z.."]" end
   local eq=(it.k=="weapon" and pl.w==it.n) or (it.k=="armor" and pl.a==it.n)
+  local mark=i==sel and ">" or " "
+  local s=mark..(eq and "*" or " ")..it.n
+  if it.z then s=s.."["..it.z.."]" end
   local co=eq and 10 or 6
   if i==sel then co=eq and 14 or 11 end
   print(sub(s,1,25),16,y,co) y+=6
