@@ -43,6 +43,7 @@ wn={"bolt","fire","digging","polymorph"}
 msgs={}
 best=0
 
+-- boot cartdata, input repeat, and smoke checks
 function _init()
  cartdata("netacht_01")
  best=dget(0) or 0
@@ -56,26 +57,42 @@ function _init()
  end
 end
 
+-- add a message to the rolling message log
 function msg(s,c)
  add(msgs,{s=s,c=c or 7})
  while #msgs>3 do deli(msgs,1) end
 end
 
+-- random integer in inclusive range
 function rr(a,b) return flr(rnd(b-a+1))+a end
+-- choose a random table entry
 function one(t) return t[rr(1,#t)] end
+-- sign of a number as -1, 0, or 1
 function sgn(v) if v<0 then return -1 elseif v>0 then return 1 end return 0 end
+-- manhattan distance between two cells
 function dist(a,b,c,d) return abs(a-c)+abs(b-d) end
+-- true when two cells touch, including diagonals
 function adj(a,b,c,d) return max(abs(a-c),abs(b-d))==1 end
+-- prevent diagonal movement through blocked corners
 function clear_diag(a,b,c,d) return a==c or b==d or (pass(a,d) and pass(c,b)) end
+-- convert x,y to flat map index
 function ix(x,y) return x+y*mw end
+-- true when a cell is inside dungeon bounds
 function inb(x,y) return x>=0 and y>=0 and x<mw and y<mh end
+-- read dungeon tile, treating out-of-bounds as solid
 function gt(x,y) if not inb(x,y) then return 0 end return map[ix(x,y)] or 0 end
+-- write dungeon tile inside bounds
 function st(x,y,v) if inb(x,y) then map[ix(x,y)]=v end end
+-- true when actors can enter a tile
 function pass(x,y) local v=gt(x,y) return v==1 or v==3 or v==4 or v>=5 end
+-- true when a tile blocks sight and bolts
 function block(x,y) local v=gt(x,y) return v==0 or v==2 end
+-- display name for wielded weapon
 function wname() return pl.w and pl.w.n or "hands" end
+-- recalculate armor class from worn armor state
 function calc_ac() pl.ac=pl.baseac+(pl.a and max(0,(pl.a.ac or 0)-(pl.a.r or 0)) or 0) end
 
+-- display item name, applying identification and rust
 function iname(it)
  if it.k=="potion" then return knp[it.id] and "potion of "..pn[it.id] or it.n end
  if it.k=="scroll" then return kns[it.id] and "scroll of "..sn[it.id] or it.n end
@@ -84,11 +101,13 @@ function iname(it)
  return it.n
 end
 
+-- add a passable tile to the pathfinding frontier
 function path_add(qx,qy,x,y,d)
  local k=ix(x,y)
  if pass(x,y) and not pd[k] then pd[k]=d add(qx,x) add(qy,y) end
 end
 
+-- build distances from the player for monster chasing
 function pathmap()
  pd={} local qx={pl.x} local qy={pl.y} local qi=1
  pd[ix(pl.x,pl.y)]=0
@@ -100,6 +119,7 @@ function pathmap()
  end
 end
 
+-- create an item of kind k for the current depth
 function new_item(k,x,y)
  local it={k=k,x=x,y=y,bu=rr(-1,1)}
  if k=="gold" then it.n="gold" it.q=rr(5,25)*depth return it end
@@ -112,16 +132,19 @@ function new_item(k,x,y)
  it.n="strange gem" return it
 end
 
+-- place a generated item on the map
 function place_item(k,x,y)
  if not x then x,y=freepos() end
  add(items,new_item(k,x,y))
 end
 
+-- save current level state before changing depth
 function save_level()
  levels[depth]={map=map,seen=seen,vis=vis,traps=traps,items=items,mons=mons,
   rooms=rooms,upx=upx,upy=upy,downx=downx,downy=downy}
 end
 
+-- restore a cached level or generate it if unseen
 function load_level(d,dir)
  save_level()
  local l=levels[d]
@@ -135,6 +158,7 @@ function load_level(d,dir)
  end
 end
 
+-- weighted random loot table
 function loot_kind()
  local r=rnd()
  if r<.24 then return "gold" end
@@ -147,6 +171,7 @@ function loot_kind()
  return depth>3 and "wand" or "gold"
 end
 
+-- find an open room cell, optionally away from view
 function freepos(far)
  for z=1,400 do
   local r=one(rooms)
@@ -156,6 +181,7 @@ function freepos(far)
  return rooms[1].x+1,rooms[1].y+1
 end
 
+-- test whether a candidate room overlaps existing rooms
 function overlap(x,y,w,h)
  for r in all(rooms) do
   if x-1<r.x+r.w+1 and x+w+1>r.x-1 and y-1<r.y+r.h+1 and y+h+1>r.y-1 then return true end
@@ -163,12 +189,14 @@ function overlap(x,y,w,h)
  return false
 end
 
+-- carve a rectangular room into the map
 function carve_room(r)
  for y=r.y,r.y+r.h-1 do
   for x=r.x,r.x+r.w-1 do st(x,y,1) end
  end
 end
 
+-- carve an l-shaped corridor between points
 function carve_corr(x1,y1,x2,y2)
  local x=x1 local y=y1
  while x~=x2 do st(x,y,4) x+=sgn(x2-x) end
@@ -176,6 +204,7 @@ function carve_corr(x1,y1,x2,y2)
  st(x,y,4)
 end
 
+-- derive visible wall and door tiles from carved space
 function walls()
  for y=1,mh-2 do
   for x=1,mw-2 do
@@ -198,6 +227,7 @@ function walls()
  end
 end
 
+-- generate a fresh dungeon level and populate it
 function gen_level(d,dir)
  depth=d map={} seen={} vis={} traps={} items={} mons={} rooms={}
  for i=0,mw*mh-1 do map[i]=0 seen[i]=0 vis[i]=0 end
@@ -238,11 +268,13 @@ function gen_level(d,dir)
  msg("welcome to level "..d,11)
 end
 
+-- add a random trap at a free position
 function add_trap()
  local x,y=freepos()
  traps[ix(x,y)]={x=x,y=y,t=one({"pit","arrow","sleep","teleport","poly","rust"}),seen=false}
 end
 
+-- add a monster, optionally at a specific position
 function add_mon(x,y,awake)
  if not x then x,y=freepos() end
  local maxm=mid(1,depth+3,#mtdefs)
@@ -250,6 +282,7 @@ function add_mon(x,y,awake)
  add(mons,{n=d.n,ch=d.ch,c=d.c,x=x,y=y,h=d.h+depth,a=d.a+depth\2,xp=d.xp,s=d.s,awake=awake or rnd()<depth/28})
 end
 
+-- start a new run from the selected role
 function make_player()
  local r=roles[rp]
  levels={} knp={} kns={} knw={}
@@ -268,16 +301,19 @@ function make_player()
  msg("you are a "..r.n,10)
 end
 
+-- return the monster occupying a cell, if any
 function mon_at(x,y)
  for m in all(mons) do if m.x==x and m.y==y then return m end end
 end
 
+-- return all items stacked on a cell
 function item_at(x,y)
  local t={}
  for it in all(items) do if it.x==x and it.y==y then add(t,it) end end
  return t
 end
 
+-- bresenham-style line of sight between two cells
 function los(x0,y0,x1,y1)
  local dx=abs(x1-x0) local dy=abs(y1-y0)
  local sx=sgn(x1-x0) local sy=sgn(y1-y0)
@@ -291,6 +327,7 @@ function los(x0,y0,x1,y1)
  end
 end
 
+-- update visible and remembered tiles around player
 function upd_vis()
  for i=0,mw*mh-1 do vis[i]=0 end
  for y=pl.y-8,pl.y+8 do
@@ -304,6 +341,7 @@ function upd_vis()
  for m in all(mons) do if vis[ix(m.x,m.y)]==1 then m.awake=true end end
 end
 
+-- ascii glyph for terrain tile
 function tile_ch(v)
  if v==0 then return " " end
  if v==1 or v==9 then return "." end
@@ -317,6 +355,7 @@ function tile_ch(v)
  return "."
 end
 
+-- draw color for terrain, dimming unseen light
 function tile_col(v,lit)
  if not lit then return 5 end
  if v==1 or v==9 then return 5 end
@@ -329,6 +368,7 @@ function tile_col(v,lit)
  return 6
 end
 
+-- ascii glyph and color for map objects
 function obj_ch(it)
  if it.k=="gold" then return "$",10 end
  if it.k=="food" then return "%",11 end
@@ -341,9 +381,12 @@ function obj_ch(it)
  return "*",9
 end
 
+-- current run score
 function score() return pl.g+pl.xp*10 end
+-- persist best score through cartdata
 function save_score() best=max(best,score()) dset(0,best) end
 
+-- dispatch update logic by screen mode
 function _update()
  if mode=="title" then up_title()
  elseif mode=="play" then up_play()
@@ -354,6 +397,7 @@ function _update()
  end
 end
 
+-- handle role selection and title actions
 function up_title()
  if btnp(0) then rp=max(1,rp-1) end
  if btnp(1) then rp=min(#roles,rp+1) end
@@ -361,6 +405,7 @@ function up_title()
  if btnp(5) then oldmode="title" mode="help" end
 end
 
+-- handle movement, action, and inventory in play
 function up_play()
  local dx,dy=dir_input()
  if dx~=0 or dy~=0 then try_move(dx,dy) return end
@@ -368,6 +413,7 @@ function up_play()
  if btnp(5) then sel=1 mode="inv" end
 end
 
+-- read cardinal or diagonal d-pad input
 function dir_input()
  if btnp(0) or btnp(1) or btnp(2) or btnp(3) then
   local dx=0 local dy=0
@@ -380,6 +426,7 @@ function dir_input()
  return 0,0
 end
 
+-- spend one turn and advance world state
 function spend()
  turn+=1
  if pl.stun>0 then pl.stun-=1 end
@@ -395,6 +442,7 @@ function spend()
  if pl.lev<12 and pl.xp>=pl.lev*pl.lev*16 then pl.lev+=1 pl.maxhp+=rr(3,6) pl.hp=pl.maxhp pl.str+=1 msg("you feel more experienced",11) end
 end
 
+-- attempt player movement or bump attack
 function try_move(dx,dy)
  if pl.stun>0 and rnd()<.35 then dx=rr(-1,1) dy=rr(-1,1) end
  if not clear_diag(pl.x,pl.y,pl.x+dx,pl.y+dy) then return end
@@ -409,6 +457,7 @@ function try_move(dx,dy)
  end
 end
 
+-- context action for pickup, stairs, features, search
 function act()
  local v=gt(pl.x,pl.y)
  local its=item_at(pl.x,pl.y)
@@ -423,6 +472,7 @@ function act()
  search() spend()
 end
 
+-- pick up all items on the current tile
 function pickup(its)
  for it in all(its) do
   if it.k=="gold" then pl.g+=it.q msg("picked up "..it.q.." gold",10) del(items,it)
@@ -432,6 +482,7 @@ function pickup(its)
  end
 end
 
+-- search adjacent tiles for hidden traps
 function search()
  local found=false
  for yy=-1,1 do for xx=-1,1 do
@@ -441,6 +492,7 @@ function search()
  if found then msg("you find a trap",10) else msg("you search",5) end
 end
 
+-- apply trap effect when stepped on
 function trigger_trap(tr)
  tr.seen=true
  if tr.t=="pit" then msg("you fall into a pit!",8) hurt(rr(2,7)+depth\3,"pit") end
@@ -454,6 +506,7 @@ function trigger_trap(tr)
  end
 end
 
+-- resolve player melee attack against a monster
 function attack(m)
  local hit=rr(1,20)+pl.dex+pl.lev
  if hit>9+depth+depth\4 then
@@ -468,6 +521,7 @@ function attack(m)
  else msg("you miss "..m.n,5) end
 end
 
+-- move monsters and perform monster attacks
 function move_mons()
  pathmap()
  for m in all(mons) do
@@ -490,6 +544,7 @@ function move_mons()
  end
 end
 
+-- resolve a monster melee attack against the player
 function mon_hit(m)
  local hit=rr(1,20)+m.a+depth\5
  if hit>10+pl.ac+pl.dex\3 then
@@ -507,16 +562,19 @@ function mon_hit(m)
  end
 end
 
+-- damage the player and die if hp reaches zero
 function hurt(n,why)
  pl.hp-=n
  if pl.hp<=0 then death(why) else msg("ouch "..n.." hp",8) end
 end
 
+-- enter death state and save score
 function death(why)
  mode="dead" cause=why
  save_score()
 end
 
+-- altar prayer with cooldown and need-based reward
 function pray()
  if turn<pl.prayer then msg("the gods are silent",5) return end
  pl.prayer=turn+320
@@ -525,6 +583,7 @@ function pray()
  else msg("you feel watched",11) end
 end
 
+-- random fountain outcome
 function drink_fountain()
  local r=rr(1,5)
  if r==1 then pl.hp=min(pl.maxhp,pl.hp+rr(4,10)) msg("cool water heals",12)
@@ -534,6 +593,7 @@ function drink_fountain()
  else msg("the fountain dries up",5) st(pl.x,pl.y,1) end
 end
 
+-- handle inventory menu navigation and actions
 function up_inv()
  if btnp(5) then mode="play" return end
  local n=#pl.inv+2
@@ -553,6 +613,7 @@ function up_inv()
  end
 end
 
+-- drop an inventory item onto the current tile
 function drop_item(i)
  local it=deli(pl.inv,i)
  if not it then return end
@@ -563,6 +624,7 @@ function drop_item(i)
  msg("dropped "..iname(it),5)
 end
 
+-- use or equip an inventory item
 function use_item(it,i)
  if it.k=="weapon" then pl.w=it msg("wielding "..iname(it),10) return end
  if it.k=="armor" then pl.a=it calc_ac() msg("wearing "..iname(it),10) return end
@@ -574,6 +636,7 @@ function use_item(it,i)
  msg("nothing happens",5)
 end
 
+-- apply potion effect and identify its type
 function quaff(it)
  knp[it.id]=true
  if it.id==1 then pl.hp=min(pl.maxhp,pl.hp+rr(8,18)) msg("you feel better",11)
@@ -583,6 +646,7 @@ function quaff(it)
  else pl.stun=rr(4,8) msg("you reel",13) end
 end
 
+-- apply scroll effect and identify its type
 function read_scroll(it)
  kns[it.id]=true
  if it.id==1 then for p in all(pl.inv) do if p.k=="potion" then knp[p.id]=true elseif p.k=="scroll" then kns[p.id]=true elseif p.k=="wand" then knw[p.id]=true end end msg("your pack is identified",11)
@@ -592,6 +656,7 @@ function read_scroll(it)
  else for m in all(mons) do if dist(m.x,m.y,pl.x,pl.y)<6 then m.awake=false end end msg("monsters hesitate",12) end
 end
 
+-- handle one-step wand direction selection
 function up_aim()
  if btnp(5) then mode="play" msg("never mind",5) return end
  local dx,dy=dir_input()
@@ -603,6 +668,7 @@ function up_aim()
  end
 end
 
+-- trace wand ray and apply wall or monster hit
 function zap(it,dx,dy)
  knw[it.id]=true
  local x=pl.x local y=pl.y
@@ -620,6 +686,7 @@ function zap(it,dx,dy)
  msg("the wand buzzes",5)
 end
 
+-- apply non-digging wand effects to a monster
 function wand_hit(it,m)
  if it.id==1 then m.h-=rr(8,18) msg("bolt strikes "..m.n,10)
  elseif it.id==2 then m.h-=rr(12,24) msg("fire burns "..m.n,9)
@@ -627,6 +694,7 @@ function wand_hit(it,m)
  if m.h<=0 then msg(m.n.." dies",11) pl.xp+=m.xp del(mons,m) end
 end
 
+-- dispatch drawing by screen mode
 function _draw()
  cls(0)
  if mode=="title" then draw_title()
@@ -638,6 +706,7 @@ function _draw()
  elseif mode=="win" then draw_end(true) end
 end
 
+-- draw title and role selection screen
 function draw_title()
  print("netacht",50,10,10)
  print("a pico-8 nethack demake",20,18,6)
@@ -650,6 +719,7 @@ function draw_title()
  print("o start  x help",30,104,7)
 end
 
+-- draw compact corridor connections
 function draw_corr(sx,sy,x,y,co)
  local px=sx*4 local py=13+sy*6
  rectfill(px+1,py+2,px+2,py+3,co)
@@ -659,6 +729,7 @@ function draw_corr(sx,sy,x,y,co)
  if pass(x,y+1) then rectfill(px+1,py+3,px+2,py+5,co) end
 end
 
+-- draw dungeon viewport, hud, actors, and messages
 function draw_game()
  rectfill(0,0,127,11,1)
  print("dl"..depth.." lv"..pl.lev.." hp"..pl.hp.."/"..pl.maxhp.." ac"..pl.ac.." $"..pl.g,1,1,7)
@@ -694,6 +765,7 @@ function draw_game()
  for i=1,#msgs do print(msgs[i].s,1,103+i*6,msgs[i].c) end
 end
 
+-- draw inventory overlay
 function draw_inv()
  rectfill(10,18,118,108,0)
  rect(10,18,118,108,7)
@@ -714,6 +786,7 @@ function draw_inv()
  print("o use  <> drop  x close",16,103,5)
 end
 
+-- draw command reference screen
 function draw_help()
  cls(0)
  print("netacht commands",31,10,10)
@@ -730,6 +803,7 @@ function draw_help()
  print("o/x back",48,121,7)
 end
 
+-- draw death or ascension screen
 function draw_end(win)
  cls(0)
  if win then
