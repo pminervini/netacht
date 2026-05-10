@@ -1,6 +1,6 @@
 # NetAcht
 
-NetAcht is an unofficial NetHack-inspired demake for PICO-8. It compresses a roguelike dungeon crawl into a tiny cartridge: procedural room-and-corridor levels, turn-based movement, monsters, traps, hunger, inventory, weapons, armour, potions, scrolls, wands, prayer, gold, levelling, and a Yendor-style objective.
+NetAcht is a tiny PICO-8 demake of NetHack. It compresses some of NetHack's core features into a small roguelike for PICO-8: procedural room-and-corridor dungeons, turn-based movement, monsters, traps, hunger, inventory, weapons, armour, potions, scrolls, wands, prayer, gold, levelling, and a Yendor-style objective. I always dreamed of having something like NetHack on my Game Boy-style devices, and this is a step toward that.
 
 ![NetAcht screenshot](screen.png)
 
