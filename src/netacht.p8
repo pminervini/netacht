@@ -69,6 +69,22 @@ function st(x,y,v) if inb(x,y) then map[ix(x,y)]=v end end
 function pass(x,y) local v=gt(x,y) return v==1 or v==3 or v==4 or v>=5 end
 function block(x,y) local v=gt(x,y) return v==0 or v==2 end
 
+function path_add(qx,qy,x,y,d)
+ local k=ix(x,y)
+ if pass(x,y) and not pd[k] then pd[k]=d add(qx,x) add(qy,y) end
+end
+
+function pathmap()
+ pd={} local qx={pl.x} local qy={pl.y} local qi=1
+ pd[ix(pl.x,pl.y)]=0
+ while qi<=#qx do
+  local x=qx[qi] local y=qy[qi] local d=pd[ix(x,y)]+1
+  qi+=1
+  path_add(qx,qy,x+1,y,d) path_add(qx,qy,x-1,y,d)
+  path_add(qx,qy,x,y+1,d) path_add(qx,qy,x,y-1,d)
+ end
+end
+
 function new_item(k,x,y)
  local it={k=k,x=x,y=y,bu=rr(-1,1)}
  if k=="gold" then it.n="gold" it.q=rr(5,25)*depth return it end
@@ -392,14 +408,19 @@ function attack(m)
 end
 
 function move_mons()
+ pathmap()
  for m in all(mons) do
   if m.h>0 then
    local dx=0 local dy=0
    if dist(m.x,m.y,pl.x,pl.y)==1 then mon_hit(m)
    else
     if m.awake or dist(m.x,m.y,pl.x,pl.y)<7 then
-     dx=sgn(pl.x-m.x) dy=sgn(pl.y-m.y)
-     if abs(pl.x-m.x)>abs(pl.y-m.y) then dy=0 else dx=0 end
+     local bx=m.x local by=m.y local bd=pd[ix(m.x,m.y)] or 99
+     local d=pd[ix(m.x+1,m.y)] if d and d<bd and not mon_at(m.x+1,m.y) then bx=m.x+1 by=m.y bd=d end
+     d=pd[ix(m.x-1,m.y)] if d and d<bd and not mon_at(m.x-1,m.y) then bx=m.x-1 by=m.y bd=d end
+     d=pd[ix(m.x,m.y+1)] if d and d<bd and not mon_at(m.x,m.y+1) then bx=m.x by=m.y+1 bd=d end
+     d=pd[ix(m.x,m.y-1)] if d and d<bd and not mon_at(m.x,m.y-1) then bx=m.x by=m.y-1 end
+     dx=bx-m.x dy=by-m.y
     elseif rnd()<.25 then dx=rr(-1,1) dy=rr(-1,1) end
     local nx=m.x+dx local ny=m.y+dy
     if pass(nx,ny) and not mon_at(nx,ny) and not (pl.x==nx and pl.y==ny) then m.x=nx m.y=ny end
