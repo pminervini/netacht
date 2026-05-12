@@ -4,7 +4,7 @@ __lua__
 -- netacht
 -- a pico-8 nethack demake
 
-mw=48 mh=32 vw=32 vh=16
+mw=48 mh=32
 mode="title" turn=0 depth=1
 roles={
  {n="valkyrie",hp=18,str=8,dex=6,con=8,ac=2,w="long sword",a="chain mail",food=900,g=20},
@@ -31,8 +31,7 @@ mtdefs={
 }
 weps={
  ["hands"]={d=3},["dagger"]={d=4},["scalpel"]={d=4},["dart"]={d=3},
- ["quarterstaff"]={d=6},["mace"]={d=6},["long sword"]={d=8},["axe"]={d=7},
- ["crysknife"]={d=10}
+ ["quarterstaff"]={d=6},["mace"]={d=6},["long sword"]={d=8},["axe"]={d=7}
 }
 arms={["shirt"]=0,["robe"]=1,["cloak"]=1,["leather"]=2,["chain mail"]=4,["mithril"]=5}
 ptn={"ruby","smoky","milky","bubbly","ochre"}
@@ -308,7 +307,7 @@ function gen_level(d,dir)
   local w=rr(4,10) local h=rr(3,7)
   local x=rr(2,mw-w-3) local y=rr(2,mh-h-3)
   if not overlap(x,y,w,h) then
-   local r={x=x,y=y,w=w,h=h,t="room"}
+   local r={x=x,y=y,w=w,h=h}
    add(rooms,r) carve_room(r)
    if #rooms>=rr(11,16) then break end
   end
@@ -321,12 +320,12 @@ function gen_level(d,dir)
  walls()
  for i=2,#rooms do
   local r=rooms[i]
-  if rnd()<.38 then
-   r.t=one({"shop","temple","fountain","grave","trap","zoo","store"})
-   if r.t=="shop" or r.t=="store" then for y=r.y,r.y+r.h-1 do for x=r.x,r.x+r.w-1 do st(x,y,9) end end end
-   if r.t=="temple" then st(r.x+r.w\2,r.y+r.h\2,7) end
-   if r.t=="fountain" then st(r.x+r.w\2,r.y+r.h\2,8) end
-   if r.t=="trap" then for n=1,rr(3,6) do add_trap() end end
+  if rnd()<.27 then
+   local t=one({"shop","temple","fountain","trap","store"})
+   if t=="shop" or t=="store" then for y=r.y,r.y+r.h-1 do for x=r.x,r.x+r.w-1 do st(x,y,9) end end end
+   if t=="temple" then st(r.x+r.w\2,r.y+r.h\2,7) end
+   if t=="fountain" then st(r.x+r.w\2,r.y+r.h\2,8) end
+   if t=="trap" then for n=1,rr(3,6) do add_trap() end end
   end
  end
  local a=rooms[1] upx=a.x+a.w\2 upy=a.y+a.h\2 st(upx,upy,5)
