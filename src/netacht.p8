@@ -40,6 +40,7 @@ scr={"zelgo","kirje","praty","velo","tharr"}
 pn={"healing","speed","strength","sickness","confusion"}
 sn={"identify","teleport","enchant","mapping","fear"}
 wn={"bolt","fire","digging","polymorph"}
+tn={"stone","floor","wall","door","corridor","stairs up","stairs down","altar","fountain","floor"}
 msgs={}
 best=0
 big=false
@@ -109,6 +110,13 @@ function iname(it)
  if it.k=="wand" then return knw[it.id] and "wand of "..wn[it.id] or it.n end
  if it.k=="armor" and (it.r or 0)>0 then return "rusty "..it.n end
  return it.n
+end
+
+function known(it,set)
+ if it.k=="potion" then if set then knp[it.id]=true end return knp[it.id] end
+ if it.k=="scroll" then if set then kns[it.id]=true end return kns[it.id] end
+ if it.k=="wand" then if set then knw[it.id]=true end return knw[it.id] end
+ return true
 end
 
 -- add a passable tile to the pathfinding frontier
@@ -446,6 +454,7 @@ function _update()
  if mode=="title" then up_title()
  elseif mode=="play" then up_play()
  elseif mode=="inv" then up_inv()
+ elseif mode=="id" then up_id()
  elseif mode=="aim" then up_aim()
  elseif mode=="help" then if btnp(4) or btnp(5) then mode=oldmode or "title" end
  elseif mode=="dead" or mode=="win" then if btnp(4) or btnp(5) then mode="title" end
@@ -548,6 +557,17 @@ function search()
  if found then msg("you find a trap",10) else msg("you search",5) end
 end
 
+-- look at what is underfoot without spending a turn
+function inspect_here()
+ local tr=traps[ix(pl.x,pl.y)]
+ if tr and tr.seen then msg("you see a "..tr.t.." trap",8) end
+ msg("you see "..tn[gt(pl.x,pl.y)+1],7)
+ local its=item_at(pl.x,pl.y)
+ if #its==1 then msg("here: "..iname(its[1]),10)
+ elseif #its>1 then msg("here: "..#its.." items, "..iname(its[#its]),10)
+ else msg("no objects here",5) end
+end
+
 -- apply trap effect when stepped on
 function trigger_trap(tr)
  tr.seen=true
@@ -643,16 +663,29 @@ end
 function drink_fountain()
  local r=rr(1,5)
  if r==1 then pl.hp=min(pl.maxhp,pl.hp+rr(4,10)) msg("cool water heals",12)
- elseif r==2 then add_mon() msg("a water demon appears",8)
+ elseif r==2 then water_demon()
  elseif r==3 then place_item("gem",pl.x,pl.y) msg("something glitters",10)
  elseif r==4 then pl.stun=rr(3,6) msg("the water was odd",13)
  else msg("the fountain dries up",5) st(pl.x,pl.y,1) end
 end
 
+function water_demon()
+ local x,y
+ for z=1,20 do
+  local dx=rr(-1,1) local dy=rr(-1,1)
+  x=pl.x+dx y=pl.y+dy
+  if (dx~=0 or dy~=0) and pass(x,y) and not mon_at(x,y) then break end
+  x=nil
+ end
+ if not x then x,y=freepos() end
+ add(mons,{n="water demon",ch="&",c=12,x=x,y=y,h=18+depth,a=7+depth\2,xp=32,s=1,awake=true})
+ msg("you unleash a water demon",8)
+end
+
 -- handle inventory menu navigation and actions
 function up_inv()
  if btnp(5) then mode="play" return end
- local n=#pl.inv+3
+ local n=#pl.inv+4
  if btnp(2) then sel-=1 if sel<1 then sel=n end end
  if btnp(3) then sel+=1 if sel>n then sel=1 end end
  if (btnp(0) or btnp(1)) and sel<=#pl.inv then
@@ -662,9 +695,10 @@ function up_inv()
   return
  end
  if btnp(4) then
-  if sel<=#pl.inv then use_item(pl.inv[sel],sel) if mode=="aim" then return end
+  if sel<=#pl.inv then use_item(pl.inv[sel],sel) if mode=="aim" or mode=="id" then return end
   elseif sel==#pl.inv+1 then pray()
-  elseif sel==#pl.inv+2 then tog_disp() return
+  elseif sel==#pl.inv+2 then inspect_here() mode="play" return
+  elseif sel==#pl.inv+3 then tog_disp() return
   else oldmode="inv" mode="help" return end
   mode="play" spend()
  end
@@ -687,7 +721,7 @@ function use_item(it,i)
  if it.k=="armor" then pl.a=it calc_ac() msg("wearing "..iname(it),10) return end
  if it.k=="food" then pl.hunger+=it.q msg("you eat "..iname(it),11) deli(pl.inv,i) return end
  if it.k=="potion" then quaff(it) deli(pl.inv,i) return end
- if it.k=="scroll" then read_scroll(it) deli(pl.inv,i) return end
+ if it.k=="scroll" then deli(pl.inv,i) read_scroll(it) return end
  if it.k=="wand" then aim_it=it mode="aim" msg("aim wand",13) return end
  if it.k=="gem" then pl.g+=50 msg("you appraise the gem",10) deli(pl.inv,i) return end
  msg("nothing happens",5)
@@ -705,12 +739,42 @@ end
 
 -- apply scroll effect and identify its type
 function read_scroll(it)
+ local ak=kns[it.id]
  kns[it.id]=true
- if it.id==1 then for p in all(pl.inv) do if p.k=="potion" then knp[p.id]=true elseif p.k=="scroll" then kns[p.id]=true elseif p.k=="wand" then knw[p.id]=true end end msg("your pack is identified",11)
+ if it.id==1 then
+  if not ak then msg("this is identify",11) end
+  if it.bu<0 and not ak then return end
+  local n=id_count()
+  if n<1 then msg("nothing else to identify",5) return end
+  idn=1
+  if it.bu>0 or (it.bu==0 and rnd()<.2) then idn=rr(0,4) if idn==0 then idn=n end end
+  if it.bu>0 and idn==1 then idn=2 end
+  idn=min(idn,n) sel=1 mode="id" msg("identify what?",13)
  elseif it.id==2 then pl.x,pl.y=freepos() msg("you teleport",13)
  elseif it.id==3 then if pl.w then pl.w.d=min(11,(pl.w.d or 3)+1) end msg("your weapon glows",10)
  elseif it.id==4 then for i=0,mw*mh-1 do seen[i]=1 end msg("the level is revealed",10)
  else for m in all(mons) do if dist(m.x,m.y,pl.x,pl.y)<6 then m.awake=false end end msg("monsters hesitate",12) end
+end
+
+function id_count()
+ local n=0
+ for it in all(pl.inv) do if not known(it) then n+=1 end end
+ return n
+end
+
+function up_id()
+ if btnp(5) then mode="play" msg("identify fades",5) spend() return end
+ local n=#pl.inv
+ if n<1 then mode="play" spend() return end
+ if btnp(2) then sel-=1 if sel<1 then sel=n end end
+ if btnp(3) then sel+=1 if sel>n then sel=1 end end
+ if btnp(4) then
+  local it=pl.inv[sel]
+  if known(it) then msg("already known",5) return end
+  known(it,true) msg("identified "..iname(it),11) idn-=1
+  if idn<=0 or id_count()<1 then mode="play" spend()
+  else msg("identify next",13) end
+ end
 end
 
 -- handle one-step wand direction selection
@@ -757,6 +821,7 @@ function _draw()
  if mode=="title" then draw_title()
  elseif mode=="play" then draw_game()
  elseif mode=="inv" then draw_game() draw_inv()
+ elseif mode=="id" then draw_game() draw_inv()
  elseif mode=="aim" then draw_game()
  elseif mode=="help" then draw_help()
  elseif mode=="dead" then draw_end(false)
@@ -843,7 +908,7 @@ end
 function draw_inv()
  rectfill(0,18,127,127,0)
  rect(10,18,118,121,7)
- print("pack",52,23,10)
+ print(mode=="id" and "identify" or "pack",48,23,10)
  local y=31
  for i=1,#pl.inv do
   local it=pl.inv[i]
@@ -855,9 +920,11 @@ function draw_inv()
   if i==sel then co=eq and 14 or 11 end
   print(sub(s,1,25),16,y,co) y+=6
  end
+ if mode=="id" then print("o choose  x cancel",16,115,5) return end
  print((sel==#pl.inv+1 and ">" or " ").."pray",16,y,sel==#pl.inv+1 and 11 or 6) y+=6
- print((sel==#pl.inv+2 and ">" or " ").."display "..disp(),16,y,sel==#pl.inv+2 and 11 or 6) y+=6
- print((sel==#pl.inv+3 and ">" or " ").."help",16,y,sel==#pl.inv+3 and 11 or 6)
+ print((sel==#pl.inv+2 and ">" or " ").."inspect",16,y,sel==#pl.inv+2 and 11 or 6) y+=6
+ print((sel==#pl.inv+3 and ">" or " ").."display "..disp(),16,y,sel==#pl.inv+3 and 11 or 6) y+=6
+ print((sel==#pl.inv+4 and ">" or " ").."help",16,y,sel==#pl.inv+4 and 11 or 6)
  print("o use  <> drop  x close",16,115,5)
 end
 
@@ -870,7 +937,7 @@ function draw_help()
  print("o: pickup stairs altar",8,43,7)
  print("o also searches/rests",8,52,6)
  print("x: inventory/actions",8,61,7)
- print("wand asks direction",8,70,13)
+ print("pack has pray/inspect",8,70,13)
  print("left/right drops item",8,79,6)
  print("find yendor on dl12",8,91,10)
  print("return to dl1 to win",8,100,10)
