@@ -48,7 +48,7 @@ big=false
 -- boot cartdata, input repeat, and smoke checks
 function _init()
  cartdata("netacht_01")
- best=dget(0) or 0
+ best=dget(0)
  big=dget(1)==1
  svok=dget(2)==86
  poke(0x5f5c,8) poke(0x5f5d,3)
@@ -69,10 +69,10 @@ end
 
 -- display mode label and persistent toggle
 function disp() return big and "large" or "compact" end
-function tog_disp(silent)
+function tog_disp()
  big=not big
  dset(1,big and 1 or 0)
- if not silent then msg("display: "..disp(),10) end
+ msg("display: "..disp(),10)
 end
 
 -- random integer in inclusive range
@@ -80,7 +80,7 @@ function rr(a,b) return flr(rnd(b-a+1))+a end
 -- choose a random table entry
 function one(t) return t[rr(1,#t)] end
 -- sign of a number as -1, 0, or 1
-function sgn(v) if v<0 then return -1 elseif v>0 then return 1 end return 0 end
+function sgn(v) return v<0 and -1 or v>0 and 1 or 0 end
 -- manhattan distance between two cells
 function dist(a,b,c,d) return abs(a-c)+abs(b-d) end
 -- true when two cells touch, including diagonals
@@ -96,9 +96,9 @@ function gt(x,y) if not inb(x,y) then return 0 end return map[ix(x,y)] or 0 end
 -- write dungeon tile inside bounds
 function st(x,y,v) if inb(x,y) then map[ix(x,y)]=v end end
 -- true when actors can enter a tile
-function pass(x,y) local v=gt(x,y) return v==1 or v==3 or v==4 or v>=5 end
+function pass(x,y) local v=gt(x,y) return v>3 or v==1 end
 -- true when a tile blocks sight and bolts
-function block(x,y) local v=gt(x,y) return v==0 or v==2 end
+function block(x,y) local v=gt(x,y) return v<4 and v~=1 end
 -- display name for wielded weapon
 function wname() return pl.w and pl.w.n or "hands" end
 -- recalculate armor class from worn armor state
@@ -263,11 +263,11 @@ function door_pos(r,dx,dy)
  end
 end
 
-function roomish(v) return v==1 or v==9 or v>=5 end
+function roomish(v) return v==1 or v>=5 end
 function door_side(x,y,dx,dy) return roomish(gt(x+dx,y+dy)) and gt(x-dx,y-dy)==4 end
 function okdoor(x,y)
  local v=gt(x,y)
- return (v==0 or v==4) and not bydoor(x,y)
+ return v%4==0 and not bydoor(x,y)
   and (door_side(x,y,1,0) or door_side(x,y,-1,0) or door_side(x,y,0,1) or door_side(x,y,0,-1))
 end
 
@@ -524,6 +524,7 @@ function try_move(dx,dy)
  local x=pl.x+dx local y=pl.y+dy
  local m=mon_at(x,y)
  if m then attack(m) spend() return end
+ if gt(x,y)==3 and dx*dy==0 then st(x,y,4) msg("the door opens") spend() return end
  if pass(x,y) then
   pl.x=x pl.y=y
   local tr=traps[ix(x,y)]
