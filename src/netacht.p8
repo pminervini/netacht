@@ -50,6 +50,7 @@ function _init()
  cartdata("netacht_01")
  best=dget(0) or 0
  big=dget(1)==1
+ svok=dget(2)==86
  poke(0x5f5c,8) poke(0x5f5d,3)
  if stat(6)=="smoke" then
   make_player()
@@ -117,6 +118,15 @@ function known(it,set)
  if it.k=="scroll" then if set then kns[it.id]=true end return kns[it.id] end
  if it.k=="wand" then if set then knw[it.id]=true end return knw[it.id] end
  return true
+end
+
+-- small local continue save
+function cs() dset(2,0) svok=false end
+function save_game()
+ dset(2,86) dset(3,rp) dset(4,depth) dset(5,pl.hasamu and 1 or 0)
+end
+function load_game()
+ rp=dget(3) make_player() pl.hasamu=dget(5)==1 gen_level(dget(4),1)
 end
 
 -- add a passable tile to the pathfinding frontier
@@ -348,7 +358,7 @@ end
 -- start a new run from the selected role
 function make_player()
  local r=roles[rp]
- levels={} knp={} kns={} knw={}
+ levels={} knp={} kns={} knw={} msgs={}
  local wi={k="weapon",n=r.w,d=weps[r.w].d}
  local ai={k="armor",n=r.a,ac=arms[r.a]}
  pl={x=1,y=1,role=r.n,maxhp=r.hp,hp=r.hp,str=r.str,dex=r.dex,con=r.con,
@@ -465,9 +475,8 @@ end
 function up_title()
  if btnp(0) then rp=max(1,rp-1) end
  if btnp(1) then rp=min(#roles,rp+1) end
- if btnp(2) or btnp(3) then tog_disp(true) end
- if btnp(4) then make_player() end
- if btnp(5) then oldmode="title" mode="help" end
+ if btnp(4) then if svok then load_game() else make_player() end end
+ if btnp(5) then cs() make_player() end
 end
 
 -- handle movement, action, and inventory in play
@@ -505,6 +514,7 @@ function spend()
  upd_vis()
  if pl.hp<pl.maxhp and turn%30==0 and pl.hunger>250 then pl.hp+=1 end
  if pl.lev<12 and pl.xp>=pl.lev*pl.lev*16 then pl.lev+=1 pl.maxhp+=rr(3,6) pl.hp=pl.maxhp pl.str+=1 msg("you feel more experienced",11) end
+ if mode=="play" then save_game() end
 end
 
 -- attempt player movement or bump attack
@@ -529,7 +539,7 @@ function act()
  if #its>0 then pickup(its) spend() return end
  if v==6 then load_level(depth+1,1) spend() return end
  if v==5 then
-  if depth==1 and pl.hasamu then mode="win" save_score() return end
+  if depth==1 and pl.hasamu then mode="win" save_score() cs() return end
   load_level(max(1,depth-1),-1) spend() return
  end
  if v==7 then pray() spend() return end
@@ -648,6 +658,7 @@ end
 function death(why)
  mode="dead" cause=why
  save_score()
+ cs()
 end
 
 -- altar prayer with cooldown and need-based reward
@@ -836,10 +847,8 @@ function draw_title()
  rect(16,36,112,84,5)
  print("< "..r.n.." >",36,42,11)
  print("hp "..r.hp.." str "..r.str.." dex "..r.dex,26,52,7)
- print("gear "..r.w,22,62,6)
  print("best "..best,44,74,10)
- print("up/down display "..disp(),18,94,6)
- print("o start  x help",30,104,7)
+ print("o start/cont",38,104,7)
 end
 
 -- draw corridor connections
