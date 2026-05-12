@@ -42,11 +42,13 @@ sn={"identify","teleport","enchant","mapping","fear"}
 wn={"bolt","fire","digging","polymorph"}
 msgs={}
 best=0
+big=false
 
 -- boot cartdata, input repeat, and smoke checks
 function _init()
  cartdata("netacht_01")
  best=dget(0) or 0
+ big=dget(1)==1
  poke(0x5f5c,8) poke(0x5f5d,3)
  if stat(6)=="smoke" then
   make_player()
@@ -61,6 +63,14 @@ end
 function msg(s,c)
  add(msgs,{s=s,c=c or 7})
  while #msgs>3 do deli(msgs,1) end
+end
+
+-- display mode label and persistent toggle
+function disp() return big and "large" or "compact" end
+function tog_disp(silent)
+ big=not big
+ dset(1,big and 1 or 0)
+ if not silent then msg("display: "..disp(),10) end
 end
 
 -- random integer in inclusive range
@@ -446,6 +456,7 @@ end
 function up_title()
  if btnp(0) then rp=max(1,rp-1) end
  if btnp(1) then rp=min(#roles,rp+1) end
+ if btnp(2) or btnp(3) then tog_disp(true) end
  if btnp(4) then make_player() end
  if btnp(5) then oldmode="title" mode="help" end
 end
@@ -641,18 +652,19 @@ end
 -- handle inventory menu navigation and actions
 function up_inv()
  if btnp(5) then mode="play" return end
- local n=#pl.inv+2
+ local n=#pl.inv+3
  if btnp(2) then sel-=1 if sel<1 then sel=n end end
  if btnp(3) then sel+=1 if sel>n then sel=1 end end
  if (btnp(0) or btnp(1)) and sel<=#pl.inv then
   drop_item(sel)
-  sel=min(sel,#pl.inv+2)
+  sel=min(sel,#pl.inv+3)
   mode="play" spend()
   return
  end
  if btnp(4) then
   if sel<=#pl.inv then use_item(pl.inv[sel],sel) if mode=="aim" then return end
   elseif sel==#pl.inv+1 then pray()
+  elseif sel==#pl.inv+2 then tog_disp() return
   else oldmode="inv" mode="help" return end
   mode="play" spend()
  end
@@ -761,17 +773,32 @@ function draw_title()
  print("hp "..r.hp.." str "..r.str.." dex "..r.dex,26,52,7)
  print("gear "..r.w,22,62,6)
  print("best "..best,44,74,10)
+ print("up/down display "..disp(),18,94,6)
  print("o start  x help",30,104,7)
 end
 
--- draw compact corridor connections
-function draw_corr(sx,sy,x,y,co)
- local px=sx*4 local py=13+sy*6
- rectfill(px+1,py+2,px+2,py+3,co)
- if pass(x-1,y) then rectfill(px,py+2,px+1,py+3,co) end
- if pass(x+1,y) then rectfill(px+2,py+2,px+3,py+3,co) end
- if pass(x,y-1) then rectfill(px+1,py,px+2,py+2,co) end
- if pass(x,y+1) then rectfill(px+1,py+3,px+2,py+5,co) end
+-- draw corridor connections
+function draw_corr(sx,sy,x,y,co,cw,ch)
+ if not big then
+  local px=sx*4 local py=13+sy*6
+  rectfill(px+1,py+2,px+2,py+3,co)
+  if pass(x-1,y) then rectfill(px,py+2,px+1,py+3,co) end
+  if pass(x+1,y) then rectfill(px+2,py+2,px+3,py+3,co) end
+  if pass(x,y-1) then rectfill(px+1,py,px+2,py+2,co) end
+  if pass(x,y+1) then rectfill(px+1,py+3,px+2,py+5,co) end
+  return
+ end
+ local px=sx*cw local py=13+sy*ch local mx=cw\2-1
+ rectfill(px+mx,py+ch\2-1,px+mx+1,py+ch\2,co)
+ if pass(x-1,y) then rectfill(px,py+ch\2-1,px+mx,py+ch\2,co) end
+ if pass(x+1,y) then rectfill(px+mx+1,py+ch\2-1,px+cw-1,py+ch\2,co) end
+ if pass(x,y-1) then rectfill(px+mx,py,px+mx+1,py+ch\2,co) end
+ if pass(x,y+1) then rectfill(px+mx,py+ch\2,px+mx+1,py+ch-1,co) end
+end
+
+-- print one map glyph in the active display size
+function glyph(ch,x,y,co)
+ if big then print("\^w\^t"..ch.."\^-w\^-t",x,y,co) else print(ch,x,y,co) end
 end
 
 -- draw dungeon viewport, hud, actors, and messages
@@ -780,6 +807,8 @@ function draw_game()
  print("dl"..depth.." lv"..pl.lev.." hp"..pl.hp.."/"..pl.maxhp.." ac"..pl.ac.." $"..pl.g,1,1,7)
  local hs="satiated" if pl.hunger<500 then hs="hungry" end if pl.hunger<250 then hs="weak" end if pl.hunger<100 then hs="faint" end
  print(pl.role.." "..hs.." "..wname(),1,7,6)
+ local vw=big and 16 or 32 local vh=big and 8 or 16
+ local cw=big and 8 or 4 local chh=big and 12 or 6
  local cx=mid(0,pl.x-vw\2,mw-vw) local cy=mid(0,pl.y-vh\2,mh-vh)
  for sy=0,vh-1 do
   for sx=0,vw-1 do
@@ -796,24 +825,24 @@ function draw_game()
     end
     local tv=gt(x,y)
     if tv==2 and not over then
-     rectfill(sx*4,13+sy*6,sx*4+3,18+sy*6,co)
+     rectfill(sx*cw,13+sy*chh,sx*cw+cw-1,12+(sy+1)*chh,co)
     elseif tv==4 and not over then
-     draw_corr(sx,sy,x,y,co)
+     draw_corr(sx,sy,x,y,co,cw,chh)
     else
-     print(ch,sx*4,13+sy*6,co)
+     glyph(ch,sx*cw,13+sy*chh,co)
     end
    end
   end
  end
- print("@",(pl.x-cx)*4,13+(pl.y-cy)*6,15)
+ glyph("@",(pl.x-cx)*cw,13+(pl.y-cy)*chh,15)
  rectfill(0,109,127,127,0)
  for i=1,#msgs do print(msgs[i].s,1,103+i*6,msgs[i].c) end
 end
 
 -- draw inventory overlay
 function draw_inv()
- rectfill(10,18,118,108,0)
- rect(10,18,118,108,7)
+ rectfill(0,18,127,127,0)
+ rect(10,18,118,121,7)
  print("pack",52,23,10)
  local y=31
  for i=1,#pl.inv do
@@ -827,8 +856,9 @@ function draw_inv()
   print(sub(s,1,25),16,y,co) y+=6
  end
  print((sel==#pl.inv+1 and ">" or " ").."pray",16,y,sel==#pl.inv+1 and 11 or 6) y+=6
- print((sel==#pl.inv+2 and ">" or " ").."help",16,y,sel==#pl.inv+2 and 11 or 6)
- print("o use  <> drop  x close",16,103,5)
+ print((sel==#pl.inv+2 and ">" or " ").."display "..disp(),16,y,sel==#pl.inv+2 and 11 or 6) y+=6
+ print((sel==#pl.inv+3 and ">" or " ").."help",16,y,sel==#pl.inv+3 and 11 or 6)
+ print("o use  <> drop  x close",16,115,5)
 end
 
 -- draw command reference screen
@@ -844,7 +874,7 @@ function draw_help()
  print("left/right drops item",8,79,6)
  print("find yendor on dl12",8,91,10)
  print("return to dl1 to win",8,100,10)
- print("hunger and gods vary",8,112,5)
+ print("display: title or pack",8,112,5)
  print("o/x back",48,121,7)
 end
 
