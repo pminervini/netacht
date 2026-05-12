@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 itchio.env
 *.log
+CLAUDE.md
+AGENTS.md
