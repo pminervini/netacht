@@ -196,31 +196,76 @@ function carve_room(r)
  end
 end
 
+function corr_st(x,y) if gt(x,y)~=3 then st(x,y,4) end end
+
 -- carve an l-shaped corridor between points
 function carve_corr(x1,y1,x2,y2)
  local x=x1 local y=y1
- while x~=x2 do st(x,y,4) x+=sgn(x2-x) end
- while y~=y2 do st(x,y,4) y+=sgn(y2-y) end
- st(x,y,4)
+ while x~=x2 do corr_st(x,y) x+=sgn(x2-x) end
+ while y~=y2 do corr_st(x,y) y+=sgn(y2-y) end
+ corr_st(x,y)
 end
 
--- derive visible wall and door tiles from carved space
+-- true when an orthogonal neighbor is already a door
+function bydoor(x,y)
+ return gt(x+1,y)==3 or gt(x-1,y)==3 or gt(x,y+1)==3 or gt(x,y-1)==3
+end
+
+-- try a candidate room-edge door position
+function door_try(r,dx,dy,i)
+ local x,y
+ if dx~=0 then
+  x=dx>0 and r.x+r.w or r.x-1 y=r.y+i
+ else
+  x=r.x+i y=dy>0 and r.y+r.h or r.y-1
+ end
+ if inb(x,y) and gt(x,y)==0 and gt(x-dx,y-dy)==1 and not bydoor(x,y) then return x,y end
+end
+
+-- find a valid door on the room edge facing dx,dy
+function door_pos(r,dx,dy)
+ local n=dx~=0 and r.h or r.w
+ for z=1,20 do
+  local x,y=door_try(r,dx,dy,rr(0,n-1))
+  if x then return x,y end
+ end
+ for i=0,n-1 do
+  local x,y=door_try(r,dx,dy,i)
+  if x then return x,y end
+ end
+end
+
+function roomish(v) return v==1 or v==9 or v>=5 end
+function door_side(x,y,dx,dy) return roomish(gt(x+dx,y+dy)) and gt(x-dx,y-dy)==4 end
+function okdoor(x,y)
+ local v=gt(x,y)
+ return (v==0 or v==4) and not bydoor(x,y)
+  and (door_side(x,y,1,0) or door_side(x,y,-1,0) or door_side(x,y,0,1) or door_side(x,y,0,-1))
+end
+
+-- join rooms using room-edge doorway candidates
+function join_rooms(a,b)
+ local dx=0 local dy=0
+ if b.x>a.x+a.w-1 then dx=1
+ elseif b.y+b.h-1<a.y then dy=-1
+ elseif b.x+b.w-1<a.x then dx=-1
+ else dy=1 end
+ local x1,y1=door_pos(a,dx,dy)
+ local x2,y2=door_pos(b,-dx,-dy)
+ if not x1 or not x2 then return end
+ carve_corr(x1+dx,y1+dy,x2-dx,y2-dy)
+ if okdoor(x1,y1) then st(x1,y1,3) end
+ if okdoor(x2,y2) then st(x2,y2,3) end
+end
+
+-- derive visible wall tiles from carved space
 function walls()
  for y=1,mh-2 do
   for x=1,mw-2 do
    if gt(x,y)==0 then
     for yy=-1,1 do for xx=-1,1 do
      local v=gt(x+xx,y+yy)
-     if v==1 or v==4 or v>=5 then st(x,y,2) end
-    end end
-   end
-  end
- end
- for y=1,mh-2 do
-  for x=1,mw-2 do
-   if gt(x,y)==4 then
-    for yy=-1,1 do for xx=-1,1 do
-     if gt(x+xx,y+yy)==1 and rnd()<.04 then st(x,y,3) end
+     if v==1 or v==3 or v==4 or v>=5 then st(x,y,2) end
     end end
    end
   end
@@ -243,7 +288,7 @@ function gen_level(d,dir)
  if #rooms<2 then gen_level(d,dir) return end
  for i=2,#rooms do
   local a=rooms[i-1] local b=rooms[i]
-  carve_corr(a.x+a.w\2,a.y+a.h\2,b.x+b.w\2,b.y+b.h\2)
+  join_rooms(a,b)
  end
  walls()
  for i=2,#rooms do
