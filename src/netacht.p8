@@ -735,7 +735,7 @@ function up_inv()
   return
  end
  if btnp(4) then
-  if sel<=#pl.inv then use_item(pl.inv[sel],sel) if mode=="aim" or mode=="id" then return end
+  if sel<=#pl.inv then use_item(pl.inv[sel],sel) if mode~="inv" then return end
   elseif sel==#pl.inv+1 then pray()
   elseif sel==#pl.inv+2 then inspect_here() mode="play" return
   elseif sel==#pl.inv+3 then tog_disp() return
