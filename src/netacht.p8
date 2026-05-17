@@ -95,7 +95,7 @@ function block(x,y) local v=gt(x,y) return v<4 and v~=1 end
 -- display name for wielded weapon
 function wname() return pl.w and pl.w.n or "hands" end
 -- recalculate armor class from worn armor state
-function calc_ac() pl.ac=pl.baseac-(pl.a and max(0,pl.a.ac-(pl.a.r or 0)) or 0) end
+function calc_ac() pl.ac=pl.baseac-(pl.a and max(0,pl.a.ac-pl.a.r) or 0) end
 
 function price(it)
  return 20+depth*5+(it.k=="wand" and 40 or it.k=="armor" and 30 or it.k=="weapon" and 20 or 0)
@@ -107,7 +107,7 @@ function iname(it)
  if it.k=="potion" then s=knp[it.id] and "potion of "..pn[it.id] or it.n end
  if it.k=="scroll" then s=kns[it.id] and "scroll of "..sn[it.id] or it.n end
  if it.k=="wand" then s=knw[it.id] and "wand of "..wn[it.id] or it.n end
- if it.k=="armor" and (it.r or 0)>0 then s="rusty "..it.n end
+ if it.k=="armor" and it.r>0 then s="rusty "..it.n end
  if it.bk then local b=it.bu or 0 s=(b<0 and "cursed " or b>0 and "blessed " or "uncursed ")..s end
  if it.unp then s=s.." $"..it.p end
  return s
@@ -154,7 +154,7 @@ function new_item(k,x,y)
  if k=="gold" then it.n="gold" it.q=rr(5,25)*depth return it end
  if k=="food" then it.n=one({"ration","tripe","apple","corpse"}) it.q=rr(80,220) return it end
  if k=="weapon" then it.n=one({"dagger","mace","axe","long sword"}) it.d=weps[it.n].d return it end
- if k=="armor" then it.n=one({"leather","chain mail","cloak","mithril"}) it.ac=arms[it.n] return it end
+ if k=="armor" then it.n=one({"leather","chain mail","cloak","mithril"}) it.ac=arms[it.n] it.r=0 return it end
  if k=="potion" then it.id=rr(1,5) it.n=ptn[it.id].." potion" return it end
  if k=="scroll" then it.id=rr(1,5) it.n="scroll "..scr[it.id] return it end
  if k=="wand" then it.id=rr(1,4) it.n=one({"oak","bone","iron","glass"}).." wand" it.z=rr(2,5) return it end
@@ -367,7 +367,7 @@ function make_player()
  local r=roles[rp]
  levels={} knp={} kns={} knw={} msgs={}
  local wi={k="weapon",n=r.w,d=weps[r.w].d}
- local ai={k="armor",n=r.a,ac=arms[r.a]}
+ local ai={k="armor",n=r.a,ac=arms[r.a],r=0}
  pl={x=1,y=1,role=r.n,maxhp=r.hp,hp=r.hp,str=r.str,dex=r.dex,
      ac=r.ac,baseac=r.ac+ai.ac,xp=0,lev=1,g=r.g,hunger=r.food,inv={},w=wi,a=ai,
      prayer=0,stun=0,hasamu=false}
@@ -461,10 +461,8 @@ function obj_ch(it)
  return "*",9
 end
 
--- current run score
-function score() return pl.g+pl.xp*10 end
 -- persist best score through cartdata
-function save_score() best=max(best,score()) dset(0,best) end
+function save_score() best=max(best,pl.g+pl.xp*10) dset(0,best) end
 
 -- dispatch update logic by screen mode
 function _update()
@@ -601,7 +599,7 @@ function trigger_trap(tr)
  if tr.t=="teleport" then msg("you teleport",13) pl.x,pl.y=freepos() end
  if tr.t=="poly" then msg("you feel different",14) pl.str=mid(3,pl.str+rr(-2,3),12) end
  if tr.t=="rust" then
-  if pl.a then pl.a.r=(pl.a.r or 0)+1 calc_ac() msg("your armor rusts",4)
+  if pl.a then pl.a.r+=1 calc_ac() msg("your armor rusts",4)
   else msg("rust flakes away",5) end
  end
 end
@@ -956,10 +954,8 @@ function draw_inv()
   local it=pl.inv[i]
   local eq=it==pl.w or it==pl.a
   local s=(i==sel and ">" or " ")..(eq and "*" or " ")..iname(it)
-  if it.ac then s=s.." ac"..it.ac end
-  if it.z then s=s.."["..it.z.."]" end
-  local co=eq and 10 or 6
-  if i==sel then co=eq and 14 or 11 end
+  if it.d then s=s.." d"..it.d elseif it.ac then s=s.." ac"..it.ac elseif it.z then s=s.."["..it.z.."]" end
+  local co=i==sel and (eq and 14 or 11) or (eq and 10 or 6)
   print(sub(s,1,25),16,y,co) y+=6
  end
  if mode=="id" then print("o choose  x cancel",16,115,5) return end
