@@ -22,6 +22,8 @@ wn={"bolt","fire","digging","polymorph"}
 tn={"stone","floor","wall","door","corridor","stairs up","stairs down","altar","fountain","floor"}
 tc={" ",".","#","+","#","<",">","_","{","."}
 tco={5,5,5,9,13,7,7,11,12,5}
+oc={gold="$",food="%",potion="!",scroll="?",wand="/",weapon=")",armor="[",amulet="\""}
+oco={gold=10,food=11,potion=14,scroll=7,wand=13,weapon=6,armor=12,amulet=10}
 msgs={}
 best=0
 big=false
@@ -95,8 +97,6 @@ function st(x,y,v) if inb(x,y) then map[ix(x,y)]=v end end
 function pass(x,y) local v=gt(x,y) return v>3 or v==1 end
 -- true when a tile blocks sight and bolts
 function block(x,y) local v=gt(x,y) return v<4 and v~=1 end
--- display name for wielded weapon
-function wname() return pl.w and pl.w.n or "hands" end
 -- recalculate armor class from worn armor state
 function calc_ac() pl.ac=pl.baseac-(pl.a and max(0,pl.a.ac-pl.a.r) or 0) end
 
@@ -111,7 +111,7 @@ function iname(it)
  if it.k=="scroll" then s=kns[it.id] and "scroll of "..sn[it.id] or it.n end
  if it.k=="wand" then s=knw[it.id] and "wand of "..wn[it.id] or it.n end
  if it.k=="armor" and it.r>0 then s="rusty "..it.n end
- if it.bk then local b=it.bu or 0 s=(b<0 and "cursed " or b>0 and "blessed " or "uncursed ")..s end
+ if it.bk then local b=it.bu s=(b<0 and "cursed " or b>0 and "blessed " or "uncursed ")..s end
  if it.unp then s=s.." $"..it.p end
  return s
 end
@@ -370,8 +370,8 @@ end
 function make_player()
  local r=roles[rp]
  levels={} knp={} kns={} knw={} msgs={}
- local wi={k="weapon",n=r.w,d=weps[r.w].d}
- local ai={k="armor",n=r.a,ac=arms[r.a],r=0}
+ local wi={k="weapon",n=r.w,d=weps[r.w].d,bu=0}
+ local ai={k="armor",n=r.a,ac=arms[r.a],r=0,bu=0}
  pl={x=1,y=1,role=r.n,maxhp=r.hp,hp=r.hp,str=r.str,dex=r.dex,
      ac=r.ac,baseac=r.ac+ai.ac,xp=0,lev=1,g=r.g,hunger=r.food,inv={},w=wi,a=ai,
      prayer=0,stun=0,hasamu=false}
@@ -423,30 +423,6 @@ function upd_vis()
   end
  end
  for m in all(mons) do if vis[ix(m.x,m.y)]==1 then m.awake=true end end
-end
-
--- ascii glyph for terrain tile
-function tile_ch(v)
- return tc[v+1] or "."
-end
-
--- draw color for terrain, dimming unseen light
-function tile_col(v,lit)
- if not lit then return 5 end
- return tco[v+1] or 6
-end
-
--- ascii glyph and color for map objects
-function obj_ch(it)
- if it.k=="gold" then return "$",10 end
- if it.k=="food" then return "%",11 end
- if it.k=="potion" then return "!",14 end
- if it.k=="scroll" then return "?",7 end
- if it.k=="wand" then return "/",13 end
- if it.k=="weapon" then return ")",6 end
- if it.k=="armor" then return "[",12 end
- if it.k=="amulet" then return "\"",10 end
- return "*",9
 end
 
 -- persist best score through cartdata
@@ -547,8 +523,9 @@ end
 -- pick up all items on the current tile
 function pickup(its)
  for it in all(its) do
-  if it.k=="gold" then pl.g+=it.q msg("picked up "..it.q.." gold",10) del(items,it)
-  elseif it.k=="amulet" then pl.hasamu=true msg("you have yendor!",10) msg("the dungeon wakes",8) del(items,it)
+  local k=it.k
+  if k=="gold" then pl.g+=it.q msg("picked up "..it.q.." gold",10) del(items,it)
+  elseif k=="amulet" then pl.hasamu=true msg("you have yendor!",10) msg("the dungeon wakes",8) del(items,it)
   elseif it.unp and pl.g<it.p then msg("you need "..it.p.." gold",8) return
   elseif #pl.inv<10 then
    if it.unp then pl.g-=it.p msg("paid "..it.p.." gold",10) it.unp=nil end
@@ -596,7 +573,7 @@ end
 function attack(m)
  local hit=rr(1,20)+pl.dex+pl.lev
  if hit>9+depth+depth\4 then
-  local wd=pl.w and (pl.w.d or 3) or 3
+  local wd=pl.w and pl.w.d or 3
   local dm=rr(1,wd)+pl.str\3
   if m.s==3 and rnd()<.3 then pl.stun=rr(2,5) msg("the eye freezes you",12) end
   m.h-=dm msg("you hit "..m.n.." "..dm,7)
@@ -679,7 +656,7 @@ function pray()
  if turn<pl.prayer then msg("the gods are silent",5) return end
  pl.prayer=turn+320
  for it in all(pl.inv) do
-  if (it.bu or 0)<0 and (it==pl.w or it==pl.a) then it.bu=0 it.bk=true msg("a curse lifts",11) return end
+  if it.bu<0 and (it==pl.w or it==pl.a) then it.bu=0 it.bk=true msg("a curse lifts",11) return end
  end
  if pl.hunger<250 then pl.hunger+=500 msg("manna fills you",11)
  elseif pl.hp<pl.maxhp then pl.hp=pl.maxhp msg("you are healed",11)
@@ -735,7 +712,7 @@ end
 function drop_item(i)
  local it=pl.inv[i]
  if not it then return end
- if (it==pl.w or it==pl.a) and (it.bu or 0)<0 then it.bk=true msg("it is cursed",8) return end
+ if (it==pl.w or it==pl.a) and it.bu<0 then it.bk=true msg("it is cursed",8) return end
  deli(pl.inv,i)
  if it==pl.w then pl.w=nil end
  if it==pl.a then pl.a=nil calc_ac() end
@@ -749,13 +726,14 @@ end
 
 -- use or equip an inventory item
 function use_item(it,i)
- if it.k=="weapon" then pl.w=it msg("wielding "..iname(it),10) return end
- if it.k=="armor" then pl.a=it calc_ac() msg("wearing "..iname(it),10) return end
- if it.k=="food" then eat(it) deli(pl.inv,i) return end
- if it.k=="potion" then quaff(it) deli(pl.inv,i) return end
- if it.k=="scroll" then deli(pl.inv,i) read_scroll(it) return end
- if it.k=="wand" then aim_it=it mode="aim" msg("aim wand",13) return end
- if it.k=="gem" then pl.g+=50 msg("you appraise the gem",10) deli(pl.inv,i) return end
+ local k=it.k
+ if k=="weapon" then pl.w=it msg("wielding "..iname(it),10) return end
+ if k=="armor" then pl.a=it calc_ac() msg("wearing "..iname(it),10) return end
+ if k=="food" then eat(it) deli(pl.inv,i) return end
+ if k=="potion" then quaff(it) deli(pl.inv,i) return end
+ if k=="scroll" then deli(pl.inv,i) read_scroll(it) return end
+ if k=="wand" then aim_it=it mode="aim" msg("aim wand",13) return end
+ if k=="gem" then pl.g+=50 msg("you appraise the gem",10) deli(pl.inv,i) return end
  msg("nothing happens",5)
 end
 
@@ -771,7 +749,7 @@ end
 -- apply potion effect and identify its type
 function quaff(it)
  knp[it.id]=true it.bk=true
- local b=it.bu or 0
+ local b=it.bu
  if b<0 then
   if it.id==1 or it.id==4 then hurt(rr(4,10)+depth\4,"cursed potion") else pl.stun=rr(5,9) msg("cursed magic",8) end
   return
@@ -787,7 +765,7 @@ end
 -- apply scroll effect and identify its type
 function read_scroll(it)
  kns[it.id]=true it.bk=true
- local b=it.bu or 0
+ local b=it.bu
  if b<0 then msg("the scroll fades",8) return end
  if it.id==1 then
   msg("this is identify",11)
@@ -798,7 +776,7 @@ function read_scroll(it)
   if b>0 and idn==1 then idn=2 end
   idn=min(idn,n) sel=1 mode="id" msg("identify what?",13)
  elseif it.id==2 then pl.x,pl.y=freepos() msg("you teleport",13)
- elseif it.id==3 then if pl.w then pl.w.d=min(11,(pl.w.d or 3)+(b>0 and 2 or 1)) end msg("your weapon glows",10)
+ elseif it.id==3 then if pl.w then pl.w.d=min(11,pl.w.d+(b>0 and 2 or 1)) end msg("your weapon glows",10)
  elseif it.id==4 then
   for i=0,mw*mh-1 do seen[i]=1 local tr=traps[i] if b>0 and tr then tr.seen=true end end msg("the level is revealed",10)
  else
@@ -870,10 +848,8 @@ end
 function _draw()
  cls(0)
  if mode=="title" then draw_title()
- elseif mode=="play" then draw_game()
- elseif mode=="inv" then draw_game() draw_inv()
- elseif mode=="id" then draw_game() draw_inv()
- elseif mode=="aim" then draw_game()
+ elseif mode=="play" or mode=="aim" then draw_game()
+ elseif mode=="inv" or mode=="id" then draw_game() draw_inv()
  elseif mode=="help" then draw_help()
  elseif mode=="dead" then draw_end(false)
  elseif mode=="win" then draw_end(true) end
@@ -901,7 +877,7 @@ function draw_game()
  rectfill(0,0,127,11,1)
  print("dl"..depth.." lv"..pl.lev.." hp"..pl.hp.."/"..pl.maxhp.." ac"..pl.ac.." $"..pl.g,1,1,7)
  local hs="satiated" if pl.hunger<500 then hs="hungry" end if pl.hunger<250 then hs="weak" end if pl.hunger<100 then hs="faint" end
- print(pl.role.." "..hs.." "..wname(),1,7,6)
+ print(pl.role.." "..hs.." "..(pl.w and pl.w.n or "hands"),1,7,6)
  local vw=big and 16 or 32 local vh=big and 8 or 16
  local cw=big and 8 or 4 local chh=big and 12 or 6
  local cx=mid(0,pl.x-vw\2,mw-vw) local cy=mid(0,pl.y-vh\2,mh-vh)
@@ -909,17 +885,16 @@ function draw_game()
   for sx=0,vw-1 do
    local x=cx+sx local y=cy+sy local k=ix(x,y)
    if seen[k]==1 then
-    local lit=vis[k]==1 local ch=tile_ch(gt(x,y)) local co=tile_col(gt(x,y),lit) local over=false
+    local v=gt(x,y) local lit=vis[k]==1 local ch=tc[v+1] or "." local co=lit and (tco[v+1] or 6) or 5 local over=false
     local tr=traps[k]
     if tr and tr.seen and lit then ch="^" co=8 over=true end
     if lit then
      local its=item_at(x,y)
-     if #its>0 then ch,co=obj_ch(its[#its]) over=true end
+     if #its>0 then local it=its[#its] ch=oc[it.k] or "*" co=oco[it.k] or 9 over=true end
      local m=mon_at(x,y)
      if m then ch=m.ch co=m.c over=true end
     end
-    local tv=gt(x,y)
-    if tv==2 and not over then
+    if v==2 and not over then
      rectfill(sx*cw,13+sy*chh,sx*cw+cw-1,12+(sy+1)*chh,co)
     else
      glyph(ch,sx*cw,13+sy*chh,co)
@@ -937,20 +912,20 @@ function draw_inv()
  rectfill(0,18,127,127,0)
  rect(10,18,118,121,7)
  print(mode=="id" and "identify" or "pack",48,23,10)
- local y=31
- for i=1,#pl.inv do
+ local y=31 local n=#pl.inv
+ for i=1,n do
   local it=pl.inv[i]
   local eq=it==pl.w or it==pl.a
-  local s=(i==sel and ">" or " ")..(eq and "*" or " ")..iname(it)
-  if it.d then s=s.." d"..it.d elseif it.ac then s=s.." ac"..it.ac elseif it.z then s=s.."["..it.z.."]" end
+  local s=(i==sel and ">" or " ")..(eq and "*" or " ")..iname(it)..(it.d and " d"..it.d or it.ac and " ac"..it.ac or it.z and "["..it.z.."]" or "")
   local co=i==sel and (eq and 14 or 11) or (eq and 10 or 6)
   print(sub(s,1,25),16,y,co) y+=6
  end
  if mode=="id" then print("o choose  x cancel",16,115,5) return end
- print((sel==#pl.inv+1 and ">" or " ").."pray",16,y,sel==#pl.inv+1 and 11 or 6) y+=6
- print((sel==#pl.inv+2 and ">" or " ").."inspect",16,y,sel==#pl.inv+2 and 11 or 6) y+=6
- print((sel==#pl.inv+3 and ">" or " ").."display "..disp(),16,y,sel==#pl.inv+3 and 11 or 6) y+=6
- print((sel==#pl.inv+4 and ">" or " ").."help",16,y,sel==#pl.inv+4 and 11 or 6)
+ local ms={"pray","inspect","display "..disp(),"help"}
+ for j=1,4 do
+  local i=n+j
+  print((sel==i and ">" or " ")..ms[j],16,y,sel==i and 11 or 6) y+=6
+ end
  print("o use  <> drop  x close",16,115,5)
 end
 
