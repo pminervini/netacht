@@ -40,6 +40,7 @@ function _init()
   make_player()
   assert(#rooms>1,"rooms")
   assert(stair_ok(),"stairs")
+  assert(not bad_corr(),"corr")
   assert(#items>0,"items")
   assert(#mons>0,"mons")
   stop("smoke ok")
@@ -254,6 +255,23 @@ function bydoor(x,y)
  return gt(x+1,y)==3 or gt(x-1,y)==3 or gt(x,y+1)==3 or gt(x,y-1)==3
 end
 
+function co(v) return v>2 and v<5 end
+function ri(v) return v==1 or v>4 end
+
+-- reject two-wide corridors and malformed door mouths
+function bad_corr()
+ for y=1,mh-2 do
+  for x=1,mw-2 do
+   local v=gt(x,y)
+   if co(v) and co(gt(x+1,y)) and co(gt(x,y+1)) and co(gt(x+1,y+1)) then return true end
+   if v==3 then
+    local l=gt(x-1,y) local r=gt(x+1,y) local u=gt(x,y-1) local d=gt(x,y+1)
+    if not (ri(l) and r==4 or ri(r) and l==4 or ri(u) and d==4 or ri(d) and u==4) then return true end
+   end
+  end
+ end
+end
+
 -- try a candidate room-edge door position
 function door_try(r,dx,dy,i)
  local x,y
@@ -324,7 +342,7 @@ function gen_level(d,dir)
   local a=rooms[i-1] local b=rooms[i]
   join_rooms(a,b)
  end
- if not stair_ok() then gen_level(d,dir) return end
+ if not stair_ok() or bad_corr() then gen_level(d,dir) return end
  walls()
  for i=2,#rooms do
   local r=rooms[i]
