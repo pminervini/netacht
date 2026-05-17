@@ -27,6 +27,7 @@ oco={gold=10,food=11,potion=14,scroll=7,wand=13,weapon=6,armor=12,amulet=10}
 msgs={}
 best=0
 big=false
+mus=-2
 
 -- boot cartdata, input repeat, and smoke checks
 function _init()
@@ -45,6 +46,7 @@ function _init()
   assert(#mons>0,"mons")
   stop("smoke ok")
  end
+ bgm(0)
 end
 
 function defs()
@@ -72,6 +74,13 @@ function tog_disp()
  big=not big
  dset(1,big and 1 or 0)
  msg("display: "..disp(),10)
+end
+
+-- switch background music without restarting the current loop
+function bgm(n)
+ if mus==n then return end
+ mus=n
+ if n<0 then music(-1,600) else music(n,900,12) end
 end
 
 -- random integer in inclusive range
@@ -131,7 +140,7 @@ function save_game()
  dset(2,86) dset(3,rp) dset(4,depth) dset(5,pl.hasamu and 1 or 0)
 end
 function load_game()
- rp=dget(3) make_player() pl.hasamu=dget(5)==1 gen_level(dget(4),1)
+ rp=dget(3) make_player() pl.hasamu=dget(5)==1 gen_level(dget(4),1) bgm(pl.hasamu and 2 or 1)
 end
 
 -- add a passable tile to the pathfinding frontier
@@ -401,6 +410,7 @@ function make_player()
  if r.pot>0 then for i=1,r.pot do add(pl.inv,new_item("potion")) end end
  turn=0 gen_level(1,1) mode="play"
  msg("you are a "..r.n,10)
+ bgm(1)
 end
 
 -- return the monster occupying a cell, if any
@@ -454,7 +464,7 @@ function _update()
  elseif mode=="id" then up_id()
  elseif mode=="aim" then up_aim()
  elseif mode=="help" then if btnp(4) or btnp(5) then mode=oldmode or "title" end
- elseif mode=="dead" or mode=="win" then if btnp(4) or btnp(5) then mode="title" end
+ elseif mode=="dead" or mode=="win" then if btnp(4) or btnp(5) then mode="title" bgm(0) end
  end
 end
 
@@ -543,7 +553,7 @@ function pickup(its)
  for it in all(its) do
   local k=it.k
   if k=="gold" then pl.g+=it.q msg("picked up "..it.q.." gold",10) del(items,it)
-  elseif k=="amulet" then pl.hasamu=true msg("you have yendor!",10) msg("the dungeon wakes",8) del(items,it)
+  elseif k=="amulet" then pl.hasamu=true msg("you have yendor!",10) msg("the dungeon wakes",8) bgm(2) del(items,it)
   elseif it.unp and pl.g<it.p then msg("you need "..it.p.." gold",8) return
   elseif #pl.inv<10 then
    if it.unp then pl.g-=it.p msg("paid "..it.p.." gold",10) it.unp=nil end
@@ -657,12 +667,13 @@ end
 -- enter death state and save score
 function death(why)
  mode="dead" cause=why
+ bgm(-1)
  save_score()
  cs()
 end
 
 function altar()
- if depth==1 and pl.hasamu then mode="win" save_score() cs() return end
+ if depth==1 and pl.hasamu then mode="win" bgm(3) save_score() cs() return end
  local n=0
  for it in all(pl.inv) do if not it.bk then it.bk=true n+=1 end end
  if n>0 then msg("the altar reveals "..n,10) return end
@@ -1109,3 +1120,16 @@ __label__
 0bbb0bb000bb00000b0b0bbb0bbb0bbb00000b0b0bb00bbb0bb00bbb0bbb00000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__sfx__
+011800000c0300c0200c0200c0100000000000000000000007030070200702007010000000000000000000000f0300f0200f0200f010000000000000000000000a0300a0200a0200a01000000000000000000000
+011800002473500000000000000000000000001f73500000000000000000000000002773500000000000000000000000002473500000000000000000000000001b7350000000000000001f735000000000000000
+01180000181200000000000000001b1200000000000000001f1200000000000000002212000000000000000024120000000000000000221200000000000000001f1200000000000000001b120000000000000000
+011000000c2300c22000000000000c2300c2200000000000082300822000000000000b2300b22000000000000c2300c22000000000000f2300f22000000000000b2300b220000000000008230082200000000000
+01100000277330000000000000001e7330000000000000002a73300000000000000021733000000000000000277330000000000000001e7330000000000000002b73300000000000000024733000000000000000
+011800000c0300000013020000000000000000000000000013030000001a020000000000000000000000000018030000001f02000000000000000000000000001f03000000260200000000000000000000000000
+011800001873500000000001f73500000000002473500000000002773500000000002b735000000000000000307350000000000000002b7350000000000000002773500000000000000024735000000000000000
+__music__
+03 40410001
+03 40410002
+03 40410304
+03 40410506
