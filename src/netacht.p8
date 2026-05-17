@@ -6,7 +6,7 @@ __lua__
 
 mw=48 mh=32
 mode="title" turn=0 depth=1
-rdat="valkyrie,18,8,6,8,2,long sword,chain mail,900,20,0,0|wizard,12,4,7,5,0,quarterstaff,cloak,760,35,1,0|rogue,14,6,9,5,1,dagger,leather,780,60,0,0|healer,16,4,5,7,1,scalpel,robe,860,90,0,2|monk,15,7,7,6,0,hands,robe,820,5,0,0|tourist,13,5,5,5,0,dart,shirt,1100,160,0,0"
+rdat="valkyrie,18,8,6,2,long sword,chain mail,900,20,0,0|wizard,12,4,7,5,quarterstaff,cloak,760,35,1,0|rogue,14,6,9,5,dagger,leather,780,60,0,0|healer,16,4,5,3,scalpel,robe,860,90,0,2|monk,15,7,7,4,hands,robe,820,5,0,0|tourist,13,5,5,5,dart,shirt,1100,160,0,0"
 rp=1
 mdat="lichen,f,11,3,1,1,0|newt,:,12,4,2,2,1|jackal,d,4,5,2,3,1|kobold,k,3,6,3,4,1|goblin,o,8,7,3,5,1|dwarf,h,9,9,4,8,1|nymph,n,14,8,2,9,2|floating eye,e,12,6,0,7,3|orc captain,O,8,14,5,13,1|wraith,W,5,12,5,18,4|xorn,X,13,18,6,24,1|minotaur,H,4,28,8,40,1"
 weps={
@@ -45,7 +45,7 @@ function defs()
  roles={}
  for r in all(split(rdat,"|")) do
   local a=split(r)
-  add(roles,{n=a[1],hp=a[2],str=a[3],dex=a[4],ac=a[6],w=a[7],a=a[8],food=a[9],g=a[10],wand=a[11],pot=a[12]})
+  add(roles,{n=a[1],hp=a[2],str=a[3],dex=a[4],ac=a[5],w=a[6],a=a[7],food=a[8],g=a[9],wand=a[10],pot=a[11]})
  end
  mtdefs={}
  for r in all(split(mdat,"|")) do
@@ -95,7 +95,7 @@ function block(x,y) local v=gt(x,y) return v<4 and v~=1 end
 -- display name for wielded weapon
 function wname() return pl.w and pl.w.n or "hands" end
 -- recalculate armor class from worn armor state
-function calc_ac() pl.ac=pl.baseac+(pl.a and max(0,(pl.a.ac or 0)-(pl.a.r or 0)) or 0) end
+function calc_ac() pl.ac=pl.baseac-(pl.a and max(0,pl.a.ac-(pl.a.r or 0)) or 0) end
 
 function price(it)
  return 20+depth*5+(it.k=="wand" and 40 or it.k=="armor" and 30 or it.k=="weapon" and 20 or 0)
@@ -369,7 +369,7 @@ function make_player()
  local wi={k="weapon",n=r.w,d=weps[r.w].d}
  local ai={k="armor",n=r.a,ac=arms[r.a]}
  pl={x=1,y=1,role=r.n,maxhp=r.hp,hp=r.hp,str=r.str,dex=r.dex,
-     ac=r.ac,baseac=r.ac-(ai.ac or 0),xp=0,lev=1,g=r.g,hunger=r.food,inv={},w=wi,a=ai,
+     ac=r.ac,baseac=r.ac+ai.ac,xp=0,lev=1,g=r.g,hunger=r.food,inv={},w=wi,a=ai,
      prayer=0,stun=0,hasamu=false}
  add(pl.inv,wi)
  add(pl.inv,ai)
@@ -650,8 +650,9 @@ end
 -- resolve a monster melee attack against the player
 function mon_hit(m)
  local hit=rr(1,20)+m.a+depth\5
- if hit>10+pl.ac+pl.dex\3 then
-  local dm=max(1,rr(1,m.a+2+depth\4)-pl.ac\2)
+ local ap=10-pl.ac
+ if hit>10+ap+pl.dex\3 then
+  local dm=max(1,rr(1,m.a+2+depth\4)-ap\2)
   if m.s==2 and #pl.inv>0 and rnd()<.18 then
    local it=pl.inv[#pl.inv] deli(pl.inv,#pl.inv)
    if it==pl.w then pl.w=nil end
@@ -954,8 +955,8 @@ function draw_inv()
  for i=1,#pl.inv do
   local it=pl.inv[i]
   local eq=it==pl.w or it==pl.a
-  local mark=i==sel and ">" or " "
-  local s=mark..(eq and "*" or " ")..iname(it)
+  local s=(i==sel and ">" or " ")..(eq and "*" or " ")..iname(it)
+  if it.ac then s=s.." ac"..it.ac end
   if it.z then s=s.."["..it.z.."]" end
   local co=eq and 10 or 6
   if i==sel then co=eq and 14 or 11 end
