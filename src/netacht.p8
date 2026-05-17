@@ -20,6 +20,8 @@ pn={"healing","speed","strength","sickness","confusion"}
 sn={"identify","teleport","enchant","mapping","fear"}
 wn={"bolt","fire","digging","polymorph"}
 tn={"stone","floor","wall","door","corridor","stairs up","stairs down","altar","fountain","floor"}
+tc={" ",".","#","+","#","<",">","_","{","."}
+tco={5,5,5,9,13,7,7,11,12,5}
 msgs={}
 best=0
 big=false
@@ -35,6 +37,7 @@ function _init()
  if stat(6)=="smoke" then
   make_player()
   assert(#rooms>1,"rooms")
+  assert(stair_ok(),"stairs")
   assert(#items>0,"items")
   assert(#mons>0,"mons")
   stop("smoke ok")
@@ -133,7 +136,7 @@ end
 -- add a passable tile to the pathfinding frontier
 function path_add(qx,qy,x,y,d)
  local k=ix(x,y)
- if pass(x,y) and not pd[k] then pd[k]=d add(qx,x) add(qy,y) end
+ if (pass(x,y) or doorpath and gt(x,y)==3) and not pd[k] then pd[k]=d add(qx,x) add(qy,y) end
 end
 
 -- build distances from the player for monster chasing
@@ -146,6 +149,15 @@ function pathmap()
   path_add(qx,qy,x+1,y,d) path_add(qx,qy,x-1,y,d)
   path_add(qx,qy,x,y+1,d) path_add(qx,qy,x,y-1,d)
  end
+end
+
+function stair_ok()
+ local r=rooms[1]
+ pl.x=r.x+r.w\2 pl.y=r.y+r.h\2 doorpath=true pathmap() doorpath=false
+ for r in all(rooms) do
+  if not pd[ix(r.x+r.w\2,r.y+r.h\2)] then return false end
+ end
+ return true
 end
 
 -- create an item of kind k for the current depth
@@ -266,14 +278,6 @@ function door_pos(r,dx,dy)
  end
 end
 
-function roomish(v) return v==1 or v>=5 end
-function door_side(x,y,dx,dy) return roomish(gt(x+dx,y+dy)) and gt(x-dx,y-dy)==4 end
-function okdoor(x,y)
- local v=gt(x,y)
- return v%4==0 and not bydoor(x,y)
-  and (door_side(x,y,1,0) or door_side(x,y,-1,0) or door_side(x,y,0,1) or door_side(x,y,0,-1))
-end
-
 -- join rooms using room-edge doorway candidates
 function join_rooms(a,b)
  local dx=0 local dy=0
@@ -285,8 +289,7 @@ function join_rooms(a,b)
  local x2,y2=door_pos(b,-dx,-dy)
  if not x1 or not x2 then return end
  carve_corr(x1+dx,y1+dy,x2-dx,y2-dy)
- if okdoor(x1,y1) then st(x1,y1,3) end
- if okdoor(x2,y2) then st(x2,y2,3) end
+ st(x1,y1,3) st(x2,y2,3)
 end
 
 -- derive visible wall tiles from carved space
@@ -321,6 +324,7 @@ function gen_level(d,dir)
   local a=rooms[i-1] local b=rooms[i]
   join_rooms(a,b)
  end
+ if not stair_ok() then gen_level(d,dir) return end
  walls()
  for i=2,#rooms do
   local r=rooms[i]
@@ -423,29 +427,13 @@ end
 
 -- ascii glyph for terrain tile
 function tile_ch(v)
- if v==0 then return " " end
- if v==1 or v==9 then return "." end
- if v==2 then return "#" end
- if v==3 then return "+" end
- if v==4 then return "#" end
- if v==5 then return "<" end
- if v==6 then return ">" end
- if v==7 then return "_" end
- if v==8 then return "{" end
- return "."
+ return tc[v+1] or "."
 end
 
 -- draw color for terrain, dimming unseen light
 function tile_col(v,lit)
  if not lit then return 5 end
- if v==1 or v==9 then return 5 end
- if v==2 then return 5 end
- if v==3 then return 9 end
- if v==4 then return 13 end
- if v==5 or v==6 then return 7 end
- if v==7 then return 11 end
- if v==8 then return 12 end
- return 6
+ return tco[v+1] or 6
 end
 
 -- ascii glyph and color for map objects
