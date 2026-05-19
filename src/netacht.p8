@@ -19,7 +19,6 @@ scr=split"zelgo,kirje,praty,velo,tharr,elbib"
 pn=split"healing,speed,gain ability,sickness,confusion,hallucination,polymorph"
 sn=split"identify,teleport,enchant,mapping,scare,remove curse"
 wn=split"missile,fire,digging,polymorph,teleport"
-tn={"stone","floor","wall","door","corridor","stairs up","stairs down","altar","fountain","floor"}
 tc={" ",".","#","+","#","<",">","_","{","."}
 tco={5,5,5,9,13,7,7,11,12,5}
 oc={gold="$",food="%",potion="!",scroll="?",wand="/",weapon=")",armor="[",amulet="\""}
@@ -215,7 +214,7 @@ end
 function traps_ok()
  for i=0,mw*mh-1 do
   local tr=traps[i]
-  if tr and bydoor(tr.x,tr.y) then return false end
+  if tr and (gt(tr.x,tr.y)~=1 or bydoor(tr.x,tr.y)) then return false end
  end
  return true
 end
@@ -339,6 +338,7 @@ function gen_level(d,dir)
  end
  if not stair_ok() or bad_corr() then gen_level(d,dir) return end
  walls()
+ local nt=3+d\2
  for i=2,#rooms do
   local r=rooms[i]
   if rnd()<.27 then
@@ -349,7 +349,7 @@ function gen_level(d,dir)
    end
    if t=="temple" then st(r.x+r.w\2,r.y+r.h\2,7) end
    if t=="fountain" then st(r.x+r.w\2,r.y+r.h\2,8) end
-   if t=="trap" then for n=1,rr(3,6) do add_trap() end end
+   if t=="trap" then nt+=rr(3,6) end
   end
  end
  local a=rooms[1] upx=a.x+a.w\2 upy=a.y+a.h\2 st(upx,upy,5)
@@ -360,7 +360,7 @@ function gen_level(d,dir)
  for i=1,4+d\2 do place_item(loot_kind()) end
  for i=1,5+d*2 do add_mon() end
  if pl.hasamu then for i=1,2+d\2 do add_mon() end msg("the dungeon wakes",8) end
- for i=1,3+d\2 do add_trap() end
+ for i=1,nt do add_trap() end
  upd_vis()
  msg("welcome to level "..d,11)
 end
@@ -369,7 +369,7 @@ end
 function add_trap()
  for z=1,400 do
   local x,y=freepos()
-  if not traps[ix(x,y)] and not bydoor(x,y) then
+  if gt(x,y)==1 and not traps[ix(x,y)] and not bydoor(x,y) then
    traps[ix(x,y)]={x=x,y=y,t=one({"pit","arrow","sleep","teleport","poly","rust"}),seen=false}
    return
   end
