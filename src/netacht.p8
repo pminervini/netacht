@@ -38,6 +38,7 @@ function _init()
   assert(not bad_corr(),"corr")
   assert(#items>0,"items")
   assert(#mons>0,"mons")
+  assert(traps_ok(),"traps")
   stop("smoke ok")
  end
  bgm(0)
@@ -211,6 +212,14 @@ function freepos(far)
  return rooms[1].x+1,rooms[1].y+1
 end
 
+function traps_ok()
+ for i=0,mw*mh-1 do
+  local tr=traps[i]
+  if tr and bydoor(tr.x,tr.y) then return false end
+ end
+ return true
+end
+
 -- test whether a candidate room overlaps existing rooms
 function overlap(x,y,w,h)
  for r in all(rooms) do
@@ -358,8 +367,13 @@ end
 
 -- add a random trap at a free position
 function add_trap()
- local x,y=freepos()
- traps[ix(x,y)]={x=x,y=y,t=one({"pit","arrow","sleep","teleport","poly","rust"}),seen=false}
+ for z=1,400 do
+  local x,y=freepos()
+  if not traps[ix(x,y)] and not bydoor(x,y) then
+   traps[ix(x,y)]={x=x,y=y,t=one({"pit","arrow","sleep","teleport","poly","rust"}),seen=false}
+   return
+  end
+ end
 end
 
 -- add a monster, optionally at a specific position
